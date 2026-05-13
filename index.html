@@ -1400,6 +1400,22 @@
   let _artifactSyncStatusTimer = null;
   const ARTIFACT_SYNC_DEBOUNCE_MS = 10 * 1000;
 
+  // Frozen HTML template — captured ONCE at boot, never re-serialized.
+  // Syncs splice new state JSON into this template instead of calling
+  // outerHTML on every write, which prevents browser serialization quirks
+  // (attribute reordering, entity encoding) from drifting the file.
+  const _STATE_MARKER = "{{__TMM_STATE_PLACEHOLDER__}}";
+  let _htmlTemplate = null;
+
+  function _captureHtmlTemplate() {
+    var stateEl = document.getElementById("state");
+    if (!stateEl) return;
+    var originalText = stateEl.textContent;
+    stateEl.textContent = _STATE_MARKER;
+    _htmlTemplate = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+    stateEl.textContent = originalText;
+  }
+
   function _serializeStateForArtifact() {
     // JSON.stringify can emit the substring "<\/script>" (the closing tag) if a
     // task title or note happens to contain it. Inline JSON in HTML must escape
@@ -1489,7 +1505,13 @@
     const startedAt = nowIso();
     console.log("[state write-back] calling mcp__cowork__update_artifact", { reason: reason, startedAt: startedAt, bytes: serialized.length });
     try {
-      const newHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      var newHtml;
+      if (_htmlTemplate && _htmlTemplate.indexOf(_STATE_MARKER) !== -1) {
+        newHtml = _htmlTemplate.replace(_STATE_MARKER, serialized);
+      } else {
+        console.warn("[state write-back] frozen template unavailable; falling back to outerHTML");
+        newHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+      }
       const res = await window.cowork.callMcpTool("mcp__cowork__update_artifact", {
         id: ARTIFACT_ID,
         html_path: null,
@@ -1560,6 +1582,11 @@
   // TSKMGR-debug 2026-05-12 — wrapped in try so a JSON.stringify failure here
   // (e.g. a stray circular ref from older state) cannot abort the IIFE before
   // the UI is wired. Worst case: first user persist re-syncs identically.
+  try {
+    _captureHtmlTemplate();
+  } catch (e) {
+    console.warn("[TSKMGR-debug boot] _captureHtmlTemplate failed; sync will fall back to outerHTML", e);
+  }
   try {
     _lastSyncedSnapshot = _serializeStateForArtifact();
   } catch (e) {
