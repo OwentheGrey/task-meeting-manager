@@ -916,7 +916,767 @@
   })();
 </script>
 
-<script id="state" type="application/json">{"version":"3.0","selectedPartnerId":"brad-noel","jiraBoards":[{"key":"SMFA","boardId":"298","label":"SMFA"},{"key":"SFAIA","boardId":"290","label":"SFAIA"}],"partners":[{"id":"brad-noel","name":"Brad Noel","email":"brad.noel@athletesinaction.org","slackUserId":"U04V5NAJG15","role":"Sr. Director, US Tech (AIA)","cadence":"Weekly • Tuesdays 10:00 AM EDT (50 min)","notes":"","lastReconciledMeetingId":"aham7t9numsjosrr49v7hsm9cc_20260428T140000Z","jiraQueries":[{"id":"uat-review","label":"Joint UAT review queue (SMFA)","jql":"project = SMFA AND status in (\"To UAT\", \"Ready for UAT\", \"Ready for UAT 2\") ORDER BY updated ASC","limit":15},{"id":"new-asks","label":"Brad's new asks (in *NEW*)","jql":"project = SMFA AND sprint = \"*NEW*\" AND reporter = \"brad.noel@athletesinaction.org\"","limit":15},{"id":"queue","label":"Brad's open SMFA queue","jql":"project = SMFA AND assignee = \"brad.noel@athletesinaction.org\" AND statusCategory != Done ORDER BY updated DESC","limit":10}],"agenda":[{"id":"b-a1","title":"Xenia summit debrief","detail":"What stuck for the Connections Owners group, what didn't, and what we're doing differently this quarter as a result.","completed":false,"relatedDoc":null,"coveredStatus":"needs_review","coveredConfidence":5,"coveredNote":"Not mentioned in meeting notes.","coveredCheckedAt":"2026-04-30T20:42:00Z","rolledForward":false,"tags":["Xenia","Connections-V1.0"],"priority":"should","minutes":8,"category":"strategic"},{"id":"b-a2","title":"Springboard findings","detail":"Top 3 themes from the field-support office hours over the last 4 weeks and where Brad needs to weigh in.","completed":false,"relatedDoc":{"title":"Topic threads — Springboard section","url":"https://docs.google.com/document/d/1x4V0W0oHla-8CusMPMMqENSy_6uSaLY66HF1NnerSaQ/edit"},"coveredStatus":"needs_review","coveredConfidence":65,"coveredNote":"Springboard discussed (advised Becky Duffield on attendance groups and a new contact-card form), but the planned 'top 3 themes from field-support office hours' framing wasn't explicitly addressed.","coveredCheckedAt":"2026-04-30T20:42:00Z","rolledForward":false,"tags":["Springboard"],"priority":"must","minutes":10,"category":"strategic"},{"id":"b-a3","title":"SMFA UAT review","detail":"Walk the open Salesforce / Connections ticket queue and decide which two to push this week.","completed":false,"relatedDoc":{"title":"SMFA UAT queue (Jira)","url":"https://jira.cru.org/issues/?jql=project%20%3D%20SMFA%20AND%20status%20%3D%20%22In%20UAT%22"},"coveredStatus":"needs_review","coveredConfidence":35,"coveredNote":"Owen has a UAT action item ('Check UAT: AI branded QR code feature'), but the planned queue review and 'pick two to push this week' decision wasn't covered.","coveredCheckedAt":"2026-04-30T20:42:00Z","rolledForward":false,"tags":["UAT","SMFA"],"priority":"must","minutes":8,"category":"tactical"},{"id":"b-a4","title":"Involved Users.csv follow-up","detail":"Confirm Brad got the file, agree on what counts as 'engaged' for the Q2 number.","completed":false,"relatedDoc":null,"coveredStatus":"needs_review","coveredConfidence":5,"coveredNote":"Not mentioned in meeting notes.","coveredCheckedAt":"2026-04-30T20:42:00Z","rolledForward":false,"tags":["Q2-engaged"],"priority":"should","minutes":5,"category":"tactical"},{"id":"b-a5","title":"Staff engagement carry-over","detail":"The Mar 30 conversation about accountability vs. autonomy — pick up where we left off; tie to the Workvivo page decision.","completed":false,"relatedDoc":{"title":"AIA Connections page on Workvivo","url":"https://staffweb.workvivo.us/spaces/104958/pages/connections"},"coveredStatus":"needs_review","coveredConfidence":5,"coveredNote":"Not mentioned in meeting notes.","coveredCheckedAt":"2026-04-30T20:42:00Z","rolledForward":false,"tags":["Staff-Engagement","Workvivo"],"priority":"should","minutes":10,"category":"strategic"}],"commitments":{"ownerToPartner":[{"id":"b-c1","text":"Send Springboard top-3 themes summary","dueBy":"2026-04-29","verifyVia":{"type":"email_sent","to":"brad.noel@athletesinaction.org","subjectContains":"Springboard"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found from Owen to brad.noel@athletesinaction.org with subject containing 'Springboard' in the last 14 days.","completed":false,"tags":["Springboard"],"priority":"must","category":"tactical","status":"open"},{"id":"b-c2","text":"Share Involved Users.csv with engagement-definition note","dueBy":"2026-04-28","verifyVia":{"type":"email_sent","to":"brad.noel@athletesinaction.org","subjectContains":"Involved Users"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found from Owen to brad.noel@athletesinaction.org with subject containing 'Involved Users' in the last 14 days.","completed":false,"tags":["Q2-engaged"],"priority":"should","category":"tactical","status":"open"},{"id":"b-c3","text":"Pick the two SMFA UAT tickets to push this week","dueBy":"2026-04-29","verifyVia":{"type":"self_attest"},"verifyStatus":"pending","verifyCheckedAt":null,"verifyNote":null,"completed":false,"tags":["UAT","SMFA"],"priority":"must","category":"tactical","status":"open"}],"partnerToOwner":[{"id":"b-c4","text":"Brad to send Workvivo page decision direction","dueBy":"2026-04-30","verifyVia":{"type":"email_sent","to":"owen.grey@athletesinaction.org","subjectContains":"Workvivo"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found to owen.grey@athletesinaction.org with subject containing 'Workvivo' in the last 14 days.","completed":false,"tags":["Workvivo","Staff-Engagement"],"priority":"should","category":"tactical","status":"open"},{"id":"b-c5","text":"Brad to confirm Q2 'engaged' definition","dueBy":"2026-04-29","verifyVia":{"type":"self_attest"},"verifyStatus":"pending","verifyCheckedAt":null,"verifyNote":null,"completed":false,"tags":["Q2-engaged"],"priority":"must","category":"tactical","status":"open"}],"joint":[{"id":"b-c7","text":"Both — close the Mar 30 accountability vs. autonomy conversation","dueBy":"2026-05-05","verifyVia":{"type":"self_attest"},"verifyStatus":"pending","verifyCheckedAt":null,"verifyNote":null,"completed":false,"tags":["Staff-Engagement"],"priority":"should","category":"strategic","status":"open"}]},"decisions":[{"id":"b-d1","text":"Connections V1.0 freeze targeted for early May; final cutline owned jointly","when":"2026-04-14","pendingConfirmation":false,"tags":["Connections-V1.0","T2FY26"]},{"id":"auto-20260430T204200Z-1","text":"Group agreed to prioritize eliciting UX/UI feedback from high-frequency Connections users before summer leave","when":"2026-04-27","pendingConfirmation":true,"coveredConfidence":80,"coveredNote":"Notes: 'The group agreed to prioritize eliciting UX UI feedback from high-frequency users before people take summer leave.'"}],"topicThreads":[{"id":"b-t1","title":"Xenia owners summit (Apr 21–23)","summary":"Three-day onsite at AIA HQ. Group debrief still owed back to the Connections Owners list.","tags":["Xenia","Connections-V1.0"]},{"id":"b-t2","title":"Springboard / field-support office hours","summary":"30-min coach sessions ran April 14–15. Top 3 themes still being synthesized.","tags":["Springboard"]},{"id":"b-t3","title":"SMFA UAT queue","summary":"Discipleship Tracker tickets in UAT; need to pick the two to push each week.","tags":["UAT","SMFA","Discipleship-Tracker"]},{"id":"b-t4","title":"Q2 'engaged' definition","summary":"Owen sent Involved Users.csv; awaiting Brad's read on what counts as engaged.","tags":["Q2-engaged"]},{"id":"b-t5","title":"Accountability vs. autonomy (Mar 30 thread)","summary":"Open thread on staff engagement; tied to Workvivo page direction.","tags":["Staff-Engagement","Workvivo"]}],"meetingLog":[],"relationshipType":"supervisor_of"},{"id":"esther-everts","name":"Esther Everts","email":"esther.everts@cru.org","slackUserId":"U0918EMTT9D","role":"Enterprise Business Analyst, Cru","cadence":"Weekly • Mondays 10:00 AM EDT (60 min) — 'Weekly Mapping'","notes":"","lastReconciledMeetingId":null,"jiraQueries":[{"id":"uat-review","label":"Joint UAT review queue (SFAIA)","jql":"project = SFAIA AND status in (\"Ready for UAT\", \"In UAT\") ORDER BY updated ASC","limit":15},{"id":"queue","label":"Esther's open queue (SMFA + SFAIA)","jql":"(project = SMFA OR project = SFAIA) AND assignee = \"esther.everts@cru.org\" AND statusCategory != Done ORDER BY updated DESC","limit":15}],"agenda":[{"id":"e-a1","title":"Connections V1.0 personas — final pass","detail":"Walk through the 'Charlie' and 'Sally' views; align with Brad's MoSCoW cut.","completed":false,"relatedDoc":null,"coveredStatus":"pending","coveredConfidence":null,"coveredNote":null,"coveredCheckedAt":null,"rolledForward":false,"tags":["Connections-V1.0","Personas"],"priority":"must","minutes":12,"category":"strategic"},{"id":"e-a2","title":"Celigo → Salesforce: Esther's prep checklist","detail":"What does Esther need from AIA before her side can start build?","completed":false,"relatedDoc":null,"coveredStatus":"pending","coveredConfidence":null,"coveredNote":null,"coveredCheckedAt":null,"rolledForward":false,"tags":["Celigo"],"priority":"must","minutes":10,"category":"tactical"},{"id":"e-a3","title":"T3 priority list — joint review","detail":"Compare Esther's Cru-side T3 list with my Connections list; flag conflicts.","completed":false,"relatedDoc":null,"coveredStatus":"pending","coveredConfidence":null,"coveredNote":null,"coveredCheckedAt":null,"rolledForward":false,"tags":["T3FY26"],"priority":"must","minutes":12,"category":"strategic"},{"id":"e-a4","title":"Xenia owners session — Esther's reflections","detail":"What landed, what didn't? Anything to roll into next quarter's planning?","completed":false,"relatedDoc":null,"coveredStatus":"pending","coveredConfidence":null,"coveredNote":null,"coveredCheckedAt":null,"rolledForward":false,"tags":["Xenia"],"priority":"should","minutes":8,"category":"strategic"},{"id":"e-a5","title":"SMFA UAT bandwidth — who can drive?","detail":"Discipleship Tracker UAT needs a dedicated runner; Esther vs. Patricia.","completed":false,"relatedDoc":{"title":"SMFA-1369","url":"https://athletesinaction.atlassian.net/browse/SMFA-1369"},"coveredStatus":"pending","coveredConfidence":null,"coveredNote":null,"coveredCheckedAt":null,"rolledForward":false,"tags":["UAT","SMFA","Discipleship-Tracker"],"priority":"should","minutes":8,"category":"tactical"}],"commitments":{"ownerToPartner":[{"id":"e-c1","text":"Send Esther the V1.0 persona-to-feature matrix","dueBy":"2026-04-29","verifyVia":{"type":"email_sent","to":"esther.everts@cru.org","subjectContains":"persona matrix"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found from Owen to esther.everts@cru.org with subject containing 'persona matrix' in the last 14 days.","completed":false,"tags":["Connections-V1.0","Personas"],"priority":"must","category":"tactical","status":"open"},{"id":"e-c2","text":"Forward Celigo gate-criteria draft as soon as Brad signs off","dueBy":"2026-05-01","verifyVia":{"type":"email_sent","to":"esther.everts@cru.org","subjectContains":"Celigo gate"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found from Owen to esther.everts@cru.org with subject containing 'Celigo gate' in the last 14 days.","completed":false,"tags":["Celigo"],"priority":"should","category":"tactical","status":"blocked","blockedOn":"Brad signing off on Celigo gate criteria"}],"partnerToOwner":[{"id":"e-c3","text":"Esther to share Cru-side T3 priority list (current draft)","dueBy":"2026-04-27","verifyVia":{"type":"email_sent","to":"owen.grey@athletesinaction.org","subjectContains":"T3 priority"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No email found to owen.grey@athletesinaction.org with subject containing 'T3 priority' in the last 14 days.","completed":false,"tags":["T3FY26"],"priority":"must","category":"tactical","status":"open"}],"joint":[{"id":"e-c4","text":"Both — confirm UAT runner for SMFA-1369 by Wednesday","dueBy":"2026-04-29","verifyVia":{"type":"jira_ticket_assignee","key":"SMFA-1369","assignee":"any"},"verifyStatus":"verified","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"SMFA-1369 has assignee Sophia Brown (s.brown@cru.org).","completed":false,"tags":["UAT","Discipleship-Tracker","SMFA"],"priority":"must","category":"tactical","status":"open"},{"id":"e-c5","text":"Both — sync 'Charlie/Sally' view definitions with Brad's MoSCoW","dueBy":"2026-05-04","verifyVia":{"type":"doc_published","nameContains":"Personas","mimeType":"application/vnd.google-apps.document"},"verifyStatus":"missing","verifyCheckedAt":"2026-05-01T12:33:01Z","verifyNote":"No Google Doc with title containing 'Personas' found modified since 2026-04-17.","completed":false,"tags":["Connections-V1.0","Personas"],"priority":"should","category":"strategic","status":"in_progress"}]},"decisions":[{"id":"e-d1","text":"Connections V1.0 will ship with two persona views: 'Charlie' (staff) and 'Sally' (student leader)","when":"2026-04-13","pendingConfirmation":false,"tags":["Connections-V1.0","Personas"]},{"id":"e-d2","text":"Celigo migration is locked behind go/no-go criteria — no flips before May 15","when":"2026-04-13","pendingConfirmation":false,"tags":["Celigo"]},{"id":"e-d3","text":"Esther will own Cru-side dependencies for SMFA UAT; AIA will own runner role","when":"2026-04-06","pendingConfirmation":false,"tags":["UAT","Discipleship-Tracker","SMFA"]}],"topicThreads":[{"id":"e-t1","title":"Connections V1.0 personas","summary":"Charlie/Sally view split agreed; field-level visibility still being mapped.","tags":["Connections-V1.0","Personas"]},{"id":"e-t2","title":"Celigo → Salesforce","summary":"Owen drafting gate criteria; Esther aligned on go/no-go gating.","tags":["Celigo"]},{"id":"e-t3","title":"SMFA UAT (Discipleship Tracker)","summary":"Open: who runs UAT day-to-day. Esther vs. Patricia under discussion.","tags":["UAT","SMFA","Discipleship-Tracker"]},{"id":"e-t4","title":"Xenia owners summit (Apr 21–23)","summary":"Esther joined remotely; her takeaways still pending.","tags":["Xenia"]}],"meetingLog":[],"relationshipType":"peer"},{"id":"rick-rogers","name":"Rick Rogers","email":"rick.rogers@athletesinaction.org","slackUserId":"U03SXCBD17T","role":"","cadence":"","notes":"","lastReconciledMeetingId":null,"jiraQueries":[],"agenda":[],"commitments":{"ownerToPartner":[],"partnerToOwner":[],"joint":[]},"decisions":[],"topicThreads":[],"meetingLog":[],"relationshipType":"supervisor_of"},{"id":"mike-crowhurst","name":"Mike Crowhurst","email":"mike.crowhurst@athletesinaction.org","slackUserId":"","role":"","cadence":"","notes":"","lastReconciledMeetingId":null,"jiraQueries":[],"agenda":[],"commitments":{"ownerToPartner":[],"partnerToOwner":[],"joint":[]},"decisions":[],"topicThreads":[],"meetingLog":[],"relationshipType":"supervisor_of"},{"id":"sean-sargent","name":"Sean Sargent","email":"sean.sargent@athletesinaction.org","slackUserId":"U07QXNM1VGQ","role":"","cadence":"","notes":"","lastReconciledMeetingId":null,"jiraQueries":[],"agenda":[],"commitments":{"ownerToPartner":[],"partnerToOwner":[],"joint":[]},"decisions":[],"topicThreads":[],"meetingLog":[],"relationshipType":"peer"},{"id":"jerry-dendinger","name":"Jerry Dendinger","email":"jerry.dendinger@athletesinaction.org","slackUserId":"","role":"","cadence":"","notes":"","lastReconciledMeetingId":null,"jiraQueries":[],"agenda":[],"commitments":{"ownerToPartner":[],"partnerToOwner":[],"joint":[]},"decisions":[],"topicThreads":[],"meetingLog":[],"relationshipType":"reports_to"},{"id":"scott-paros","name":"Scott Paros","email":"scott.paros@cru.org","slackUserId":"UG2M4QUKD","role":"","cadence":"","notes":"","lastReconciledMeetingId":null,"jiraQueries":[],"agenda":[],"commitments":{"ownerToPartner":[],"partnerToOwner":[],"joint":[]},"decisions":[],"topicThreads":[],"meetingLog":[],"relationshipType":"reports_to"}],"committees":[],"projects":[],"dismissedRecurringEventIds":[],"selectedKind":"partner"}</script>
+<script id="state" type="application/json">
+{
+  "version": "3.0",
+  "selectedPartnerId": "brad-noel",
+  "jiraBoards": [
+    {
+      "key": "SMFA",
+      "boardId": "298",
+      "label": "SMFA"
+    },
+    {
+      "key": "SFAIA",
+      "boardId": "290",
+      "label": "SFAIA"
+    }
+  ],
+  "partners": [
+    {
+      "id": "brad-noel",
+      "name": "Brad Noel",
+      "email": "brad.noel@athletesinaction.org",
+      "slackUserId": "U04V5NAJG15",
+      "role": "Sr. Director, US Tech (AIA)",
+      "cadence": "Weekly • Tuesdays 10:00 AM EDT (50 min)",
+      "notes": "",
+      "lastReconciledMeetingId": "aham7t9numsjosrr49v7hsm9cc_20260428T140000Z",
+      "jiraQueries": [
+        {
+          "id": "uat-review",
+          "label": "Joint UAT review queue (SMFA)",
+          "jql": "project = SMFA AND status in (\"To UAT\", \"Ready for UAT\", \"Ready for UAT 2\") ORDER BY updated ASC",
+          "limit": 15
+        },
+        {
+          "id": "new-asks",
+          "label": "Brad's new asks (in *NEW*)",
+          "jql": "project = SMFA AND sprint = \"*NEW*\" AND reporter = \"brad.noel@athletesinaction.org\"",
+          "limit": 15
+        },
+        {
+          "id": "queue",
+          "label": "Brad's open SMFA queue",
+          "jql": "project = SMFA AND assignee = \"brad.noel@athletesinaction.org\" AND statusCategory != Done ORDER BY updated DESC",
+          "limit": 10
+        }
+      ],
+      "agenda": [
+        {
+          "id": "b-a1",
+          "title": "Xenia summit debrief",
+          "detail": "What stuck for the Connections Owners group, what didn't, and what we're doing differently this quarter as a result.",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "needs_review",
+          "coveredConfidence": 5,
+          "coveredNote": "Not mentioned in meeting notes.",
+          "coveredCheckedAt": "2026-04-30T20:42:00Z",
+          "rolledForward": false,
+          "tags": [
+            "Xenia",
+            "Connections-V1.0"
+          ],
+          "priority": "should",
+          "minutes": 8,
+          "category": "strategic"
+        },
+        {
+          "id": "b-a2",
+          "title": "Springboard findings",
+          "detail": "Top 3 themes from the field-support office hours over the last 4 weeks and where Brad needs to weigh in.",
+          "completed": false,
+          "relatedDoc": {
+            "title": "Topic threads — Springboard section",
+            "url": "https://docs.google.com/document/d/1x4V0W0oHla-8CusMPMMqENSy_6uSaLY66HF1NnerSaQ/edit"
+          },
+          "coveredStatus": "needs_review",
+          "coveredConfidence": 65,
+          "coveredNote": "Springboard discussed (advised Becky Duffield on attendance groups and a new contact-card form), but the planned 'top 3 themes from field-support office hours' framing wasn't explicitly addressed.",
+          "coveredCheckedAt": "2026-04-30T20:42:00Z",
+          "rolledForward": false,
+          "tags": [
+            "Springboard"
+          ],
+          "priority": "must",
+          "minutes": 10,
+          "category": "strategic"
+        },
+        {
+          "id": "b-a3",
+          "title": "SMFA UAT review",
+          "detail": "Walk the open Salesforce / Connections ticket queue and decide which two to push this week.",
+          "completed": false,
+          "relatedDoc": {
+            "title": "SMFA UAT queue (Jira)",
+            "url": "https://jira.cru.org/issues/?jql=project%20%3D%20SMFA%20AND%20status%20%3D%20%22In%20UAT%22"
+          },
+          "coveredStatus": "needs_review",
+          "coveredConfidence": 35,
+          "coveredNote": "Owen has a UAT action item ('Check UAT: AI branded QR code feature'), but the planned queue review and 'pick two to push this week' decision wasn't covered.",
+          "coveredCheckedAt": "2026-04-30T20:42:00Z",
+          "rolledForward": false,
+          "tags": [
+            "UAT",
+            "SMFA"
+          ],
+          "priority": "must",
+          "minutes": 8,
+          "category": "tactical"
+        },
+        {
+          "id": "b-a4",
+          "title": "Involved Users.csv follow-up",
+          "detail": "Confirm Brad got the file, agree on what counts as 'engaged' for the Q2 number.",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "needs_review",
+          "coveredConfidence": 5,
+          "coveredNote": "Not mentioned in meeting notes.",
+          "coveredCheckedAt": "2026-04-30T20:42:00Z",
+          "rolledForward": false,
+          "tags": [
+            "Q2-engaged"
+          ],
+          "priority": "should",
+          "minutes": 5,
+          "category": "tactical"
+        },
+        {
+          "id": "b-a5",
+          "title": "Staff engagement carry-over",
+          "detail": "The Mar 30 conversation about accountability vs. autonomy — pick up where we left off; tie to the Workvivo page decision.",
+          "completed": false,
+          "relatedDoc": {
+            "title": "AIA Connections page on Workvivo",
+            "url": "https://staffweb.workvivo.us/spaces/104958/pages/connections"
+          },
+          "coveredStatus": "needs_review",
+          "coveredConfidence": 5,
+          "coveredNote": "Not mentioned in meeting notes.",
+          "coveredCheckedAt": "2026-04-30T20:42:00Z",
+          "rolledForward": false,
+          "tags": [
+            "Staff-Engagement",
+            "Workvivo"
+          ],
+          "priority": "should",
+          "minutes": 10,
+          "category": "strategic"
+        }
+      ],
+      "commitments": {
+        "ownerToPartner": [
+          {
+            "id": "b-c1",
+            "text": "Send Springboard top-3 themes summary",
+            "dueBy": "2026-04-29",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "brad.noel@athletesinaction.org",
+              "subjectContains": "Springboard"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found from Owen to brad.noel@athletesinaction.org with subject containing 'Springboard' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "Springboard"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          },
+          {
+            "id": "b-c2",
+            "text": "Share Involved Users.csv with engagement-definition note",
+            "dueBy": "2026-04-28",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "brad.noel@athletesinaction.org",
+              "subjectContains": "Involved Users"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found from Owen to brad.noel@athletesinaction.org with subject containing 'Involved Users' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "Q2-engaged"
+            ],
+            "priority": "should",
+            "category": "tactical",
+            "status": "open"
+          },
+          {
+            "id": "b-c3",
+            "text": "Pick the two SMFA UAT tickets to push this week",
+            "dueBy": "2026-04-29",
+            "verifyVia": {
+              "type": "self_attest"
+            },
+            "verifyStatus": "pending",
+            "verifyCheckedAt": null,
+            "verifyNote": null,
+            "completed": false,
+            "tags": [
+              "UAT",
+              "SMFA"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          }
+        ],
+        "partnerToOwner": [
+          {
+            "id": "b-c4",
+            "text": "Brad to send Workvivo page decision direction",
+            "dueBy": "2026-04-30",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "owen.grey@athletesinaction.org",
+              "subjectContains": "Workvivo"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found to owen.grey@athletesinaction.org with subject containing 'Workvivo' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "Workvivo",
+              "Staff-Engagement"
+            ],
+            "priority": "should",
+            "category": "tactical",
+            "status": "open"
+          },
+          {
+            "id": "b-c5",
+            "text": "Brad to confirm Q2 'engaged' definition",
+            "dueBy": "2026-04-29",
+            "verifyVia": {
+              "type": "self_attest"
+            },
+            "verifyStatus": "pending",
+            "verifyCheckedAt": null,
+            "verifyNote": null,
+            "completed": false,
+            "tags": [
+              "Q2-engaged"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          }
+        ],
+        "joint": [
+          {
+            "id": "b-c7",
+            "text": "Both — close the Mar 30 accountability vs. autonomy conversation",
+            "dueBy": "2026-05-05",
+            "verifyVia": {
+              "type": "self_attest"
+            },
+            "verifyStatus": "pending",
+            "verifyCheckedAt": null,
+            "verifyNote": null,
+            "completed": false,
+            "tags": [
+              "Staff-Engagement"
+            ],
+            "priority": "should",
+            "category": "strategic",
+            "status": "open"
+          }
+        ]
+      },
+      "decisions": [
+        {
+          "id": "b-d1",
+          "text": "Connections V1.0 freeze targeted for early May; final cutline owned jointly",
+          "when": "2026-04-14",
+          "pendingConfirmation": false,
+          "tags": [
+            "Connections-V1.0",
+            "T2FY26"
+          ]
+        },
+        {
+          "id": "auto-20260430T204200Z-1",
+          "text": "Group agreed to prioritize eliciting UX/UI feedback from high-frequency Connections users before summer leave",
+          "when": "2026-04-27",
+          "pendingConfirmation": true,
+          "coveredConfidence": 80,
+          "coveredNote": "Notes: 'The group agreed to prioritize eliciting UX UI feedback from high-frequency users before people take summer leave.'"
+        }
+      ],
+      "topicThreads": [
+        {
+          "id": "b-t1",
+          "title": "Xenia owners summit (Apr 21–23)",
+          "summary": "Three-day onsite at AIA HQ. Group debrief still owed back to the Connections Owners list.",
+          "tags": [
+            "Xenia",
+            "Connections-V1.0"
+          ]
+        },
+        {
+          "id": "b-t2",
+          "title": "Springboard / field-support office hours",
+          "summary": "30-min coach sessions ran April 14–15. Top 3 themes still being synthesized.",
+          "tags": [
+            "Springboard"
+          ]
+        },
+        {
+          "id": "b-t3",
+          "title": "SMFA UAT queue",
+          "summary": "Discipleship Tracker tickets in UAT; need to pick the two to push each week.",
+          "tags": [
+            "UAT",
+            "SMFA",
+            "Discipleship-Tracker"
+          ]
+        },
+        {
+          "id": "b-t4",
+          "title": "Q2 'engaged' definition",
+          "summary": "Owen sent Involved Users.csv; awaiting Brad's read on what counts as engaged.",
+          "tags": [
+            "Q2-engaged"
+          ]
+        },
+        {
+          "id": "b-t5",
+          "title": "Accountability vs. autonomy (Mar 30 thread)",
+          "summary": "Open thread on staff engagement; tied to Workvivo page direction.",
+          "tags": [
+            "Staff-Engagement",
+            "Workvivo"
+          ]
+        }
+      ],
+      "meetingLog": [],
+      "relationshipType": "supervisor_of"
+    },
+    {
+      "id": "esther-everts",
+      "name": "Esther Everts",
+      "email": "esther.everts@cru.org",
+      "slackUserId": "U0918EMTT9D",
+      "role": "Enterprise Business Analyst, Cru",
+      "cadence": "Weekly • Mondays 10:00 AM EDT (60 min) — 'Weekly Mapping'",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [
+        {
+          "id": "uat-review",
+          "label": "Joint UAT review queue (SFAIA)",
+          "jql": "project = SFAIA AND status in (\"Ready for UAT\", \"In UAT\") ORDER BY updated ASC",
+          "limit": 15
+        },
+        {
+          "id": "queue",
+          "label": "Esther's open queue (SMFA + SFAIA)",
+          "jql": "(project = SMFA OR project = SFAIA) AND assignee = \"esther.everts@cru.org\" AND statusCategory != Done ORDER BY updated DESC",
+          "limit": 15
+        }
+      ],
+      "agenda": [
+        {
+          "id": "e-a1",
+          "title": "Connections V1.0 personas — final pass",
+          "detail": "Walk through the 'Charlie' and 'Sally' views; align with Brad's MoSCoW cut.",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "pending",
+          "coveredConfidence": null,
+          "coveredNote": null,
+          "coveredCheckedAt": null,
+          "rolledForward": false,
+          "tags": [
+            "Connections-V1.0",
+            "Personas"
+          ],
+          "priority": "must",
+          "minutes": 12,
+          "category": "strategic"
+        },
+        {
+          "id": "e-a2",
+          "title": "Celigo → Salesforce: Esther's prep checklist",
+          "detail": "What does Esther need from AIA before her side can start build?",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "pending",
+          "coveredConfidence": null,
+          "coveredNote": null,
+          "coveredCheckedAt": null,
+          "rolledForward": false,
+          "tags": [
+            "Celigo"
+          ],
+          "priority": "must",
+          "minutes": 10,
+          "category": "tactical"
+        },
+        {
+          "id": "e-a3",
+          "title": "T3 priority list — joint review",
+          "detail": "Compare Esther's Cru-side T3 list with my Connections list; flag conflicts.",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "pending",
+          "coveredConfidence": null,
+          "coveredNote": null,
+          "coveredCheckedAt": null,
+          "rolledForward": false,
+          "tags": [
+            "T3FY26"
+          ],
+          "priority": "must",
+          "minutes": 12,
+          "category": "strategic"
+        },
+        {
+          "id": "e-a4",
+          "title": "Xenia owners session — Esther's reflections",
+          "detail": "What landed, what didn't? Anything to roll into next quarter's planning?",
+          "completed": false,
+          "relatedDoc": null,
+          "coveredStatus": "pending",
+          "coveredConfidence": null,
+          "coveredNote": null,
+          "coveredCheckedAt": null,
+          "rolledForward": false,
+          "tags": [
+            "Xenia"
+          ],
+          "priority": "should",
+          "minutes": 8,
+          "category": "strategic"
+        },
+        {
+          "id": "e-a5",
+          "title": "SMFA UAT bandwidth — who can drive?",
+          "detail": "Discipleship Tracker UAT needs a dedicated runner; Esther vs. Patricia.",
+          "completed": false,
+          "relatedDoc": {
+            "title": "SMFA-1369",
+            "url": "https://athletesinaction.atlassian.net/browse/SMFA-1369"
+          },
+          "coveredStatus": "pending",
+          "coveredConfidence": null,
+          "coveredNote": null,
+          "coveredCheckedAt": null,
+          "rolledForward": false,
+          "tags": [
+            "UAT",
+            "SMFA",
+            "Discipleship-Tracker"
+          ],
+          "priority": "should",
+          "minutes": 8,
+          "category": "tactical"
+        }
+      ],
+      "commitments": {
+        "ownerToPartner": [
+          {
+            "id": "e-c1",
+            "text": "Send Esther the V1.0 persona-to-feature matrix",
+            "dueBy": "2026-04-29",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "esther.everts@cru.org",
+              "subjectContains": "persona matrix"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found from Owen to esther.everts@cru.org with subject containing 'persona matrix' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "Connections-V1.0",
+              "Personas"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          },
+          {
+            "id": "e-c2",
+            "text": "Forward Celigo gate-criteria draft as soon as Brad signs off",
+            "dueBy": "2026-05-01",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "esther.everts@cru.org",
+              "subjectContains": "Celigo gate"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found from Owen to esther.everts@cru.org with subject containing 'Celigo gate' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "Celigo"
+            ],
+            "priority": "should",
+            "category": "tactical",
+            "status": "blocked",
+            "blockedOn": "Brad signing off on Celigo gate criteria"
+          }
+        ],
+        "partnerToOwner": [
+          {
+            "id": "e-c3",
+            "text": "Esther to share Cru-side T3 priority list (current draft)",
+            "dueBy": "2026-04-27",
+            "verifyVia": {
+              "type": "email_sent",
+              "to": "owen.grey@athletesinaction.org",
+              "subjectContains": "T3 priority"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No email found to owen.grey@athletesinaction.org with subject containing 'T3 priority' in the last 14 days.",
+            "completed": false,
+            "tags": [
+              "T3FY26"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          }
+        ],
+        "joint": [
+          {
+            "id": "e-c4",
+            "text": "Both — confirm UAT runner for SMFA-1369 by Wednesday",
+            "dueBy": "2026-04-29",
+            "verifyVia": {
+              "type": "jira_ticket_assignee",
+              "key": "SMFA-1369",
+              "assignee": "any"
+            },
+            "verifyStatus": "verified",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "SMFA-1369 has assignee Sophia Brown (s.brown@cru.org).",
+            "completed": false,
+            "tags": [
+              "UAT",
+              "Discipleship-Tracker",
+              "SMFA"
+            ],
+            "priority": "must",
+            "category": "tactical",
+            "status": "open"
+          },
+          {
+            "id": "e-c5",
+            "text": "Both — sync 'Charlie/Sally' view definitions with Brad's MoSCoW",
+            "dueBy": "2026-05-04",
+            "verifyVia": {
+              "type": "doc_published",
+              "nameContains": "Personas",
+              "mimeType": "application/vnd.google-apps.document"
+            },
+            "verifyStatus": "missing",
+            "verifyCheckedAt": "2026-05-01T12:33:01Z",
+            "verifyNote": "No Google Doc with title containing 'Personas' found modified since 2026-04-17.",
+            "completed": false,
+            "tags": [
+              "Connections-V1.0",
+              "Personas"
+            ],
+            "priority": "should",
+            "category": "strategic",
+            "status": "in_progress"
+          }
+        ]
+      },
+      "decisions": [
+        {
+          "id": "e-d1",
+          "text": "Connections V1.0 will ship with two persona views: 'Charlie' (staff) and 'Sally' (student leader)",
+          "when": "2026-04-13",
+          "pendingConfirmation": false,
+          "tags": [
+            "Connections-V1.0",
+            "Personas"
+          ]
+        },
+        {
+          "id": "e-d2",
+          "text": "Celigo migration is locked behind go/no-go criteria — no flips before May 15",
+          "when": "2026-04-13",
+          "pendingConfirmation": false,
+          "tags": [
+            "Celigo"
+          ]
+        },
+        {
+          "id": "e-d3",
+          "text": "Esther will own Cru-side dependencies for SMFA UAT; AIA will own runner role",
+          "when": "2026-04-06",
+          "pendingConfirmation": false,
+          "tags": [
+            "UAT",
+            "Discipleship-Tracker",
+            "SMFA"
+          ]
+        }
+      ],
+      "topicThreads": [
+        {
+          "id": "e-t1",
+          "title": "Connections V1.0 personas",
+          "summary": "Charlie/Sally view split agreed; field-level visibility still being mapped.",
+          "tags": [
+            "Connections-V1.0",
+            "Personas"
+          ]
+        },
+        {
+          "id": "e-t2",
+          "title": "Celigo → Salesforce",
+          "summary": "Owen drafting gate criteria; Esther aligned on go/no-go gating.",
+          "tags": [
+            "Celigo"
+          ]
+        },
+        {
+          "id": "e-t3",
+          "title": "SMFA UAT (Discipleship Tracker)",
+          "summary": "Open: who runs UAT day-to-day. Esther vs. Patricia under discussion.",
+          "tags": [
+            "UAT",
+            "SMFA",
+            "Discipleship-Tracker"
+          ]
+        },
+        {
+          "id": "e-t4",
+          "title": "Xenia owners summit (Apr 21–23)",
+          "summary": "Esther joined remotely; her takeaways still pending.",
+          "tags": [
+            "Xenia"
+          ]
+        }
+      ],
+      "meetingLog": [],
+      "relationshipType": "peer"
+    },
+    {
+      "id": "rick-rogers",
+      "name": "Rick Rogers",
+      "email": "rick.rogers@athletesinaction.org",
+      "slackUserId": "U03SXCBD17T",
+      "role": "",
+      "cadence": "",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [],
+      "agenda": [],
+      "commitments": {
+        "ownerToPartner": [],
+        "partnerToOwner": [],
+        "joint": []
+      },
+      "decisions": [],
+      "topicThreads": [],
+      "meetingLog": [],
+      "relationshipType": "supervisor_of"
+    },
+    {
+      "id": "mike-crowhurst",
+      "name": "Mike Crowhurst",
+      "email": "mike.crowhurst@athletesinaction.org",
+      "slackUserId": "",
+      "role": "",
+      "cadence": "",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [],
+      "agenda": [],
+      "commitments": {
+        "ownerToPartner": [],
+        "partnerToOwner": [],
+        "joint": []
+      },
+      "decisions": [],
+      "topicThreads": [],
+      "meetingLog": [],
+      "relationshipType": "supervisor_of"
+    },
+    {
+      "id": "sean-sargent",
+      "name": "Sean Sargent",
+      "email": "sean.sargent@athletesinaction.org",
+      "slackUserId": "U07QXNM1VGQ",
+      "role": "",
+      "cadence": "",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [],
+      "agenda": [],
+      "commitments": {
+        "ownerToPartner": [],
+        "partnerToOwner": [],
+        "joint": []
+      },
+      "decisions": [],
+      "topicThreads": [],
+      "meetingLog": [],
+      "relationshipType": "peer"
+    },
+    {
+      "id": "jerry-dendinger",
+      "name": "Jerry Dendinger",
+      "email": "jerry.dendinger@athletesinaction.org",
+      "slackUserId": "",
+      "role": "",
+      "cadence": "",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [],
+      "agenda": [],
+      "commitments": {
+        "ownerToPartner": [],
+        "partnerToOwner": [],
+        "joint": []
+      },
+      "decisions": [],
+      "topicThreads": [],
+      "meetingLog": [],
+      "relationshipType": "reports_to"
+    },
+    {
+      "id": "scott-paros",
+      "name": "Scott Paros",
+      "email": "scott.paros@cru.org",
+      "slackUserId": "UG2M4QUKD",
+      "role": "",
+      "cadence": "",
+      "notes": "",
+      "lastReconciledMeetingId": null,
+      "jiraQueries": [],
+      "agenda": [],
+      "commitments": {
+        "ownerToPartner": [],
+        "partnerToOwner": [],
+        "joint": []
+      },
+      "decisions": [],
+      "topicThreads": [],
+      "meetingLog": [],
+      "relationshipType": "reports_to"
+    }
+  ],
+  "committees": [],
+  "projects": [],
+  "dismissedRecurringEventIds": [],
+  "selectedKind": "partner"
+}
+</script>
 
 <div class="app" id="app">
   <aside class="roster">
