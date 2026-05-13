@@ -1956,7 +1956,7 @@
   // membership reality. STATE.slackChannelMembers is left inert (no migration).
   if (!STATE.committeeAttendees || typeof STATE.committeeAttendees !== "object") STATE.committeeAttendees = {};
   // TSKMGR-69 — ISO timestamp of last successful write-through to the embedded
-  // <script id="state"> block. Stays null until the first successful sync.
+  // state seed block. Stays null until the first successful sync.
   if (typeof STATE._lastArtifactSync === "undefined") STATE._lastArtifactSync = null;
   const liveCache = {};
   const jiraCache = {};
@@ -2021,7 +2021,7 @@
     if (localOk) {
       showSave("saved", "Saved locally (" + (reason || "user update") + ")");
     }
-    // TSKMGR-69 — schedule a debounced write-back to the embedded <script id="state">
+    // TSKMGR-69 — schedule a debounced write-back to the embedded state seed
     // block in index.html. Independent of the 600ms localStorage debounce so we don't
     // spam the MCP API. localStorage remains the authoritative primary store.
     try { scheduleArtifactSync(reason); } catch (e) { console.warn("[persistState] scheduleArtifactSync failed", e); }
@@ -2135,7 +2135,7 @@
   }
 
   // ============================================================
-  // TSKMGR-69 — Write-back STATE to embedded <script id="state"> block
+  // TSKMGR-69 — Write-back STATE to embedded state seed block
   // ============================================================
   // localStorage["tmm.v3.lastState"] remains the AUTHORITATIVE primary store.
   // This adds a debounced write-through to the artifact file (index.html) so:
@@ -2179,14 +2179,14 @@
   function _serializeStateForArtifact() {
     // JSON.stringify can emit the substring "<\/script>" (the closing tag) if a
     // task title or note happens to contain it. Inline JSON in HTML must escape
-    // the slash so the browser doesn't prematurely close the <script> tag. The
+    // the slash so the browser doesn't prematurely close the script tag. The
     // backslash-slash form is safe to re-parse on hydration — JSON.parse treats
-    // backslash-forward-slash as /. Also defensively escape "<!--" since HTML5
-    // treats it as a script-comment opener inside inline <script> blocks.
+    // backslash-forward-slash as /. Also defensively escape HTML comment openers since HTML5
+    // treats it as a script-comment opener inside inline script blocks.
     const raw = JSON.stringify(STATE);
     return raw
       .replace(/<\/script/gi, "<\\/script")
-      .replace(/<!--/g, "<\\!--");
+      .replace(/<\!--/g, "<\\!--");
   }
 
   function _relTime(iso) {
@@ -2244,7 +2244,7 @@
       console.log("[state write-back] no changes since last successful sync; skipping");
       return { skipped: "no_changes" };
     }
-    // Update the embedded <script id="state"> block in the LIVE DOM first.
+    // Update the embedded state seed block in the LIVE DOM first.
     // This is what gets serialized into newHtml below. We deliberately set
     // textContent to the escaped string so any closing-script substrings in
     // task titles don't break the inline JSON. JSON.parse on rehydration
@@ -2252,7 +2252,7 @@
     let stateEl;
     try {
       stateEl = document.getElementById("state");
-      if (!stateEl) throw new Error("embedded <script id=\"state\"> element missing");
+      if (!stateEl) throw new Error("embedded state script element missing");
       stateEl.textContent = serialized;
     } catch (e) {
       console.error("[state write-back] failed to update embedded script element", e);
@@ -5382,7 +5382,7 @@
       needs_review: "Needs review — reconciler scored 30–79%; appears in the Needs your call tray for you to decide."
     };
     panel.append(defSection("Coverage (agenda items, set by reconciler)", "Did this topic get addressed in the meeting? Set automatically by the post-meeting reconciler scheduled task.", COVERAGE_DEFS));
-    panel.append(ce("div", { class: "lead", style: "margin-top:24px" }, "Source: research-1on1-best-practices.md and research-task-tracker-ui-patterns.md (in the outputs folder). Definitions can be revised by editing the constants near the top of the artifact's <script> block."));
+    panel.append(ce("div", { class: "lead", style: "margin-top:24px" }, "Source: research-1on1-best-practices.md and research-task-tracker-ui-patterns.md (in the outputs folder). Definitions can be revised by editing the constants near the top of the artifact's script block."));
     dos.append(panel);
   }
 

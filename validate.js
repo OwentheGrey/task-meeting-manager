@@ -127,34 +127,58 @@ if (trapHits.length === 0) {
   trapHits.forEach(h => console.log(`         line ${h.lineNum}: ${h.text.substring(0, 100)}`));
 }
 
-// Also scan for <!-- which HTML5 treats as a comment opener inside <script>
+// Scan for <!-- which triggers the HTML5 "script data escaped" state.
+// The HTML parser does NOT understand JS syntax — it sees raw bytes.
+// A <!-- inside a string, regex, or comment is equally dangerous.
+// Safe alternative: use <\!-- in regex patterns (backslash is a no-op
+// escape in JS regex but breaks the 4-char <!-- sequence for HTML).
 let commentHits = [];
 for (let i = 0; i < jsLines.length; i++) {
   const line = jsLines[i];
-  if (/\.replace\(.*<!--/i.test(line)) continue;
-  // Only flag bare <!-- that isn't inside a string — heuristic: skip lines with quotes around it
-  if (/<!--/.test(line) && !/['"].*<!--.*['"]/.test(line) && !/\/\/.*<!--/.test(line)) {
+  if (/<!--/.test(line)) {
     commentHits.push({ lineNum: scriptStart + 1 + i + 1, text: line.trim() });
   }
 }
 
 if (commentHits.length === 0) {
-  pass("No dangerous <!-- literals found in JS code");
+  pass("No literal <!-- found in JS code");
 } else {
-  warn(`Found ${commentHits.length} <!-- literal(s) in JS (HTML5 comment openers inside <script>):`);
+  fail(`Found ${commentHits.length} <!-- literal(s) — triggers HTML5 script-data-escaped state:`);
   commentHits.forEach(h => console.log(`         line ${h.lineNum}: ${h.text.substring(0, 100)}`));
+}
+
+// Scan for <script which, when preceded by <!--, triggers the HTML5
+// "script data double escaped" state — in which </script> does NOT
+// close the element. Flag ALL occurrences: comments, strings, etc.
+let scriptOpenHits = [];
+for (let i = 0; i < jsLines.length; i++) {
+  const line = jsLines[i];
+  if (/<script/i.test(line)) {
+    scriptOpenHits.push({ lineNum: scriptStart + 1 + i + 1, text: line.trim() });
+  }
+}
+
+if (scriptOpenHits.length === 0) {
+  pass("No literal <script found in JS code");
+} else {
+  fail(`Found ${scriptOpenHits.length} <script literal(s) — compound risk with <!-- for double-escape trap:`);
+  scriptOpenHits.forEach(h => console.log(`         line ${h.lineNum}: ${h.text.substring(0, 100)}`));
 }
 
 // ── Check 4: IIFE structure ────────────────────────────────────────────
 console.log("\n─ IIFE structure");
 
-const firstJsLine = jsLines[0].trim();
+// Find the IIFE opener — may not be the first line if there's a boot error handler
+let iifeOpenLine = -1;
+for (let i = 0; i < Math.min(jsLines.length, 20); i++) {
+  if (/^\(function\s*\(/.test(jsLines[i].trim())) { iifeOpenLine = i; break; }
+}
 const lastJsLine = jsLines[jsLines.length - 1].trim();
 
-if (/^\(function\s*\(/.test(firstJsLine)) {
+if (iifeOpenLine !== -1) {
   pass("IIFE opens with (function () {");
 } else {
-  fail(`Expected IIFE opener, got: ${firstJsLine.substring(0, 60)}`);
+  fail(`Expected IIFE opener in first 20 lines, not found`);
 }
 
 if (/^\}\)\(\);?$/.test(lastJsLine)) {
