@@ -634,6 +634,8 @@
   .refresh-btn:hover { color:var(--accent); border-color:var(--accent); background:rgba(90,62,175,.06); }
   .refresh-btn.spinning { animation: spin .8s linear infinite; pointer-events:none; opacity:.6; }
   @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+  /* TSKMGR-47 — Jira UAT owner highlight */
+  .email-card.uat-owner { border-left:3px solid var(--warn); background:rgba(232,175,40,.04); }
   /* TSKMGR-49 — Ritual step structure */
   .ritual-step { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
   .ritual-step.done { opacity: .7; }
@@ -2039,6 +2041,10 @@
   //   exceptDescriptionUpdateByOthers: bool (calendar_update only),
   //   label: string, createdAt: ISO }]
   if (!Array.isArray(STATE.emailTriage.filterRules)) STATE.emailTriage.filterRules = [];
+  // TSKMGR-47 — Jira UAT live cache (not persisted — refreshed on each scan)
+  // Shape: { items: [{ key, summary, status, project, assigneeEmail, assigneeName,
+  //   updatedAt, uatColumn, jiraId, url }], lastScanAt, scanInProgress }
+  var jiraUatCache = { items: [], lastScanAt: null, scanInProgress: false };
   const liveCache = {};
   const jiraCache = {};
   let sprintCache = null;
@@ -3173,11 +3179,123 @@
   // end TSKMGR-49 Part 2 — Email triage engine
   // ============================================================
 
+  // ============================================================
+  // TSKMGR-47 — Jira UAT live sync
+  // ============================================================
+  // Status → uatColumn mapping per project. Each project may use different
+  // status names for its UAT columns. The board column the user sees may
+  // differ from the Jira status name; this map normalises them.
+  var JIRA_UAT_PROJECTS = [
+    { key: "SMFA",   statuses: { "Ready for UAT": "test1", "To UAT": "test1", "Ready for UAT 2": "test2" } },
+    { key: "SFAIA",  statuses: { "Ready for UAT": "test1", "In UAT": "test2" } },
+    { key: "TSKMGR", statuses: { "Ready for UAT": "test1", "In UAT": "test2", "Ready for UAT 2": "test2" } }
+  ];
+  var JIRA_BASE_URL = "https://jira.cru.org/browse/";
+
+  /**
+   * Scan Jira for all UAT-status items across active projects.
+   * Populates jiraUatCache.items with normalised entries.
+   */
+  async function scanJiraUatItems() {
+    if (jiraUatCache.scanInProgress) return jiraUatCache;
+    jiraUatCache.scanInProgress = true;
+    var allItems = [];
+    var errors = [];
+
+    for (var pi = 0; pi < JIRA_UAT_PROJECTS.length; pi++) {
+      var proj = JIRA_UAT_PROJECTS[pi];
+      var statusNames = Object.keys(proj.statuses);
+      if (!statusNames.length) continue;
+      var statusJql = statusNames.map(function (s) { return '"' + s + '"'; }).join(", ");
+      var jql = 'project = ' + proj.key + ' AND status in (' + statusJql + ') ORDER BY updated DESC';
+      try {
+        var raw = await window.cowork.callMcpTool(
+          "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_search",
+          { jql: jql, fields: "summary,status,assignee,updated,issuetype,priority", limit: 50 }
+        );
+        var data = unwrapMcp(raw).data;
+        var issues = [];
+        // Handle both { issues: [...] } and raw array shapes
+        if (data && data.issues) issues = data.issues;
+        else if (Array.isArray(data)) issues = data;
+        else if (typeof data === "string") { try { var parsed = JSON.parse(data); issues = parsed.issues || []; } catch (e) {} }
+
+        issues.forEach(function (iss) {
+          var statusName = (iss.status && iss.status.name) || "";
+          var uatCol = proj.statuses[statusName] || "test1";
+          var assigneeEmail = (iss.assignee && iss.assignee.email) ? iss.assignee.email.toLowerCase() : "";
+          var assigneeName = (iss.assignee && iss.assignee.display_name) || "";
+          allItems.push({
+            key: iss.key,
+            jiraId: iss.id,
+            summary: iss.summary || "",
+            status: statusName,
+            project: proj.key,
+            assigneeEmail: assigneeEmail,
+            assigneeName: assigneeName,
+            updatedAt: iss.updated || null,
+            uatColumn: uatCol,
+            priority: (iss.priority && iss.priority.name) || "",
+            issueType: (iss.issuetype && iss.issuetype.name) || "",
+            url: JIRA_BASE_URL + iss.key,
+            isOwner: assigneeEmail === OWNER_EMAIL.toLowerCase()
+          });
+        });
+      } catch (e) {
+        errors.push(proj.key + ": " + (e.message || e));
+      }
+    }
+
+    jiraUatCache.items = allItems;
+    jiraUatCache.lastScanAt = new Date().toISOString();
+    jiraUatCache.scanInProgress = false;
+    jiraUatCache.errors = errors;
+    console.log("[TSKMGR] Jira UAT scan:", allItems.length, "items across", JIRA_UAT_PROJECTS.length, "projects", errors.length ? "errors: " + errors.join("; ") : "");
+    return jiraUatCache;
+  }
+
+  /** Match a Jira assignee email to a STATE.partners entry. */
+  function matchPartnerByEmail(email) {
+    if (!email) return null;
+    var lower = email.toLowerCase();
+    return (STATE.partners || []).find(function (p) {
+      return (p.email || "").toLowerCase() === lower;
+    }) || null;
+  }
+
+  /** Create an agenda item on a partner's dossier from a Jira UAT ticket. */
+  function addJiraUatToDossier(jiraItem, partnerId) {
+    var p = (STATE.partners || []).find(function (x) { return x.id === partnerId; });
+    if (!p) { showSave("error", "Partner not found"); return; }
+    p.agenda = p.agenda || [];
+    // Check if already added (by Jira key in title)
+    var alreadyExists = p.agenda.some(function (a) { return a.title && a.title.indexOf(jiraItem.key) !== -1; });
+    if (alreadyExists) { showSave("saved", jiraItem.key + " already on " + (p.name || "partner") + "'s agenda"); return; }
+    p.agenda.push({
+      title: "UAT: " + jiraItem.key + " — " + jiraItem.summary.slice(0, 60),
+      detail: "Status: " + jiraItem.status + " | Assigned: " + (jiraItem.assigneeName || "unassigned") + " | " + jiraItem.url,
+      completed: false,
+      coveredStatus: "needs_review",
+      tags: ["UAT"],
+      created_at: nowIso(),
+      source_link: jiraItem.url,
+      source_type: "jira",
+      source_title: jiraItem.key
+    });
+    persistState("Add Jira UAT to dossier: " + jiraItem.key);
+    showSave("saved", jiraItem.key + " added to " + (p.name || "partner") + "'s agenda");
+  }
+
+  // ============================================================
+  // end TSKMGR-47 — Jira UAT live sync
+  // ============================================================
+
   /**
    * Refresh all data sources in parallel. Called by global ↻ button.
    * - Email: re-scan inbox (clearing stale classifications)
    * - Partner live caches: clear liveCache so next render fetches fresh calendar/Gmail/Slack
    * - Jira: clear jiraCache so next render re-runs queries
+   * - Jira UAT: re-scan all UAT items across projects
    * - Sprint: clear sprintCache
    */
   async function refreshAllDataSources() {
@@ -3207,6 +3325,14 @@
       results.push("email: " + emailResult.classified + " classified" + (emailResult.autoIgnored ? ", " + emailResult.autoIgnored + " ignored" : ""));
     } catch (e) {
       results.push("email error: " + (e.message || e));
+    }
+
+    // 5. Scan Jira UAT items across all projects
+    try {
+      var uatResult = await scanJiraUatItems();
+      results.push("jira UAT: " + uatResult.items.length + " items");
+    } catch (e) {
+      results.push("jira UAT error: " + (e.message || e));
     }
 
     showSave("saved", "Refreshed: " + results.join(" · "));
@@ -5970,7 +6096,7 @@
     return out;
   }
   function countAllUat() {
-    return collectAllUatEntries().length;
+    return collectAllUatEntries().length + (jiraUatCache.items || []).length;
   }
 
   // Resolve the project id for a UAT entry per the brief:
@@ -6038,33 +6164,119 @@
   }
 
   function renderAllUatPanel(panel) {
-    const entries = collectAllUatEntries();
-    if (!entries.length) {
-      panel.append(ce("div", { class: "mytasks-panel-empty" }, "Nothing in UAT right now. (Set an item's UAT pill to Test 1 or Test 2 to surface it here.)"));
+    // --- Scan bar (mirrors email tab pattern) ---
+    var scanBar = ce("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:12px" });
+    var uatRefreshBtn = ce("button", {
+      class: "refresh-btn",
+      title: "Refresh Jira UAT items across all projects",
+      onclick: async function () {
+        uatRefreshBtn.classList.add("spinning");
+        try { await scanJiraUatItems(); } catch (e) { showSave("error", "UAT scan failed: " + (e.message || e)); }
+        uatRefreshBtn.classList.remove("spinning");
+        renderMyTasksView();
+      }
+    }, "↻");
+    scanBar.append(uatRefreshBtn);
+    if (jiraUatCache.lastScanAt) {
+      scanBar.append(ce("span", { class: "meta", style: "font-size:11px;color:var(--muted)" }, "Jira scanned " + daysAgo(jiraUatCache.lastScanAt)));
+    } else {
+      scanBar.append(ce("span", { class: "meta", style: "font-size:11px;color:var(--muted)" }, "Not yet scanned — click ↻ to load Jira UAT items"));
+    }
+    panel.append(scanBar);
+
+    // --- Collect items from both sources ---
+    // 1. Manual STATE items (existing behavior)
+    var manualEntries = collectAllUatEntries();
+    // 2. Jira live items
+    var jiraItems = jiraUatCache.items || [];
+
+    // Build unified buckets grouped by Jira project key
+    // Shape: { projectKey: { label, test1: [], test2: [], totalOwner: N } }
+    var buckets = {};
+
+    // Insert Jira items
+    jiraItems.forEach(function (ji) {
+      var bk = ji.project || "OTHER";
+      if (!buckets[bk]) buckets[bk] = { label: bk, test1: [], test2: [], totalOwner: 0 };
+      var col = ji.uatColumn || "test1";
+      var entry = { jira: true, jiraItem: ji, uatColumn: col };
+      buckets[bk][col].push(entry);
+      if (ji.isOwner) buckets[bk].totalOwner++;
+    });
+
+    // Insert manual STATE items (group under project key if resolvable)
+    manualEntries.forEach(function (e) {
+      var pr = _resolveProjectForUatEntry(e);
+      var bk = pr ? (pr.shortCode || pr.name || "MANUAL") : "MANUAL";
+      if (!buckets[bk]) buckets[bk] = { label: pr ? pr.name : "Manual items", test1: [], test2: [], totalOwner: 0 };
+      var col = e.item.uatColumn || "test1";
+      buckets[bk][col].push({ jira: false, entry: e, uatColumn: col });
+    });
+
+    var allKeys = Object.keys(buckets);
+    if (!allKeys.length && !jiraItems.length) {
+      panel.append(ce("div", { class: "mytasks-panel-empty" }, "Nothing in UAT right now. Click ↻ above to scan Jira for UAT items."));
       return;
     }
 
-    // Group: projectId -> { project, test1: [], test2: [] }
-    const buckets = new Map();
-    const unassigned = { project: null, test1: [], test2: [] };
-    entries.forEach(e => {
-      const pr = _resolveProjectForUatEntry(e);
-      if (!pr) {
-        unassigned[e.item.uatColumn].push(e);
-        return;
-      }
-      let b = buckets.get(pr.id);
-      if (!b) { b = { project: pr, test1: [], test2: [] }; buckets.set(pr.id, b); }
-      b[e.item.uatColumn].push(e);
+    // --- SLA summary ---
+    var totalItems = jiraItems.length + manualEntries.length;
+    var ownerItems = jiraItems.filter(function (j) { return j.isOwner; });
+    var staleItems = jiraItems.filter(function (j) {
+      if (!j.updatedAt) return false;
+      return (Date.now() - new Date(j.updatedAt).getTime()) > 7 * 86400000;
+    });
+    var summaryParts = [totalItems + " UAT items"];
+    if (ownerItems.length) summaryParts.push(ownerItems.length + " assigned to you");
+    if (staleItems.length) summaryParts.push(staleItems.length + " stale (>7d)");
+    panel.append(ce("div", { style: "font-size:12px;margin-bottom:10px;padding:6px 10px;border-radius:4px;background:rgba(90,62,175,.06);border:1px solid var(--line)" },
+      summaryParts.join(" · ")));
+
+    // --- Render each project bucket ---
+    // Sort: SMFA first, then others alpha, MANUAL last
+    var sortOrder = { SMFA: 0, SFAIA: 1, TSKMGR: 2, MANUAL: 99 };
+    allKeys.sort(function (a, b) { return (sortOrder[a] != null ? sortOrder[a] : 50) - (sortOrder[b] != null ? sortOrder[b] : 50); });
+
+    allKeys.forEach(function (bk) {
+      var bucket = buckets[bk];
+      var sec = ce("section", { class: "uat-project-section" });
+      var head = ce("div", { class: "uat-project-head" });
+      head.append(ce("span", { class: "lbl" }, bucket.label));
+      var count = bucket.test1.length + bucket.test2.length;
+      head.append(ce("span", { class: "count" }, "(" + count + (bucket.totalOwner ? ", " + bucket.totalOwner + " yours" : "") + ")"));
+      sec.append(head);
+
+      [["Test 1", bucket.test1], ["Test 2", bucket.test2]].forEach(function (pair) {
+        var label = pair[0]; var list = pair[1];
+        if (!list.length) return;
+        var sub = ce("div", { class: "uat-subgroup" });
+        sub.append(ce("div", { class: "uat-subgroup-head" }, label + " (" + list.length + ")"));
+
+        // Sort: owner items first, then by staleness (oldest updated first)
+        list.sort(function (a, b) {
+          var aOwner = a.jira ? (a.jiraItem.isOwner ? 0 : 1) : 1;
+          var bOwner = b.jira ? (b.jiraItem.isOwner ? 0 : 1) : 1;
+          if (aOwner !== bOwner) return aOwner - bOwner;
+          var aDate = a.jira ? (a.jiraItem.updatedAt || "") : "";
+          var bDate = b.jira ? (b.jiraItem.updatedAt || "") : "";
+          return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+        });
+
+        list.forEach(function (item) {
+          if (item.jira) {
+            sub.append(_renderJiraUatRow(item.jiraItem));
+          } else {
+            sub.append(_renderUatRow(item.entry));
+          }
+        });
+        sec.append(sub);
+      });
+      panel.append(sec);
     });
 
-    // Render in project order (active projects only). Sort by name; "Unassigned" at the bottom.
-    const sections = Array.from(buckets.values())
-      .filter(b => b.project && b.project.status !== "done")
-      .sort((a, b) => (a.project.name || "").localeCompare(b.project.name || ""));
-    sections.forEach(b => panel.append(_renderUatProjectSection(b.project, b.test1, b.test2)));
-    if (unassigned.test1.length || unassigned.test2.length) {
-      panel.append(_renderUatProjectSection({ id: null, name: "Unassigned project" }, unassigned.test1, unassigned.test2));
+    // --- Errors from last scan ---
+    if (jiraUatCache.errors && jiraUatCache.errors.length) {
+      panel.append(ce("div", { style: "font-size:11px;color:var(--bad);margin-top:8px" }, "Scan errors: " + jiraUatCache.errors.join("; ")));
     }
   }
 
@@ -6122,6 +6334,78 @@
         uat: { column: item.uatColumn, testerLabel: testerLabel, daysCumulative: days }
       }
     );
+  }
+
+  /** Render a Jira-sourced UAT row with assignee, age, SLA badge, and dossier routing. */
+  function _renderJiraUatRow(ji) {
+    var card = ce("div", { class: "email-card" + (ji.isOwner ? " uat-owner" : ""), style: "padding:8px 10px" });
+
+    // Row 1: Key + Summary
+    var row1 = ce("div", { style: "display:flex;align-items:center;gap:8px" });
+    row1.append(ce("a", { href: ji.url, target: "_blank", style: "font-weight:700;font-size:12px;color:var(--accent);text-decoration:none;white-space:nowrap" }, ji.key));
+    row1.append(ce("span", { style: "font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, ji.summary));
+    // SLA badge: days since last update
+    if (ji.updatedAt) {
+      var ageDays = Math.floor((Date.now() - new Date(ji.updatedAt).getTime()) / 86400000);
+      var slaColor = ageDays >= 7 ? "var(--bad)" : ageDays >= 5 ? "var(--warn)" : "var(--muted)";
+      var slaText = ageDays + "d";
+      row1.append(ce("span", { style: "font-size:10px;font-weight:600;color:" + slaColor + ";white-space:nowrap", title: "Last updated " + ageDays + " days ago" }, slaText));
+    }
+    card.append(row1);
+
+    // Row 2: Assignee + status + actions
+    var row2 = ce("div", { style: "display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap" });
+    // Assignee
+    var assigneeLabel = ji.assigneeName || ji.assigneeEmail || "Unassigned";
+    row2.append(ce("span", { style: "font-size:11px;color:var(--muted)" }, assigneeLabel));
+    // Status pill
+    row2.append(ce("span", { style: "font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(90,62,175,.12);color:var(--accent);white-space:nowrap" }, ji.status));
+    // Owner highlight
+    if (ji.isOwner) {
+      row2.append(ce("span", { style: "font-size:10px;padding:1px 6px;border-radius:10px;background:rgba(232,175,40,.15);color:var(--warn);font-weight:600" }, "You"));
+    }
+
+    // Actions
+    var acts = ce("div", { style: "margin-left:auto;display:flex;gap:4px" });
+    // Add to dossier — find matching partner
+    var partner = matchPartnerByEmail(ji.assigneeEmail);
+    if (partner) {
+      acts.append(ce("button", { class: "btn tiny", title: "Add to " + (partner.name || "partner") + "'s 1:1 agenda", onclick: function () { addJiraUatToDossier(ji, partner.id); renderMyTasksView(); } }, "→ " + (partner.name || "").split(" ")[0]));
+    } else if (ji.assigneeEmail && !ji.isOwner) {
+      // Assignee isn't a partner — offer to pick one
+      acts.append(ce("button", { class: "btn tiny", style: "color:var(--muted)", title: "Assignee not matched to a partner dossier", onclick: function () { _openPartnerPickerForJiraUat(ji); } }, "→ Dossier"));
+    }
+    if (ji.isOwner) {
+      acts.append(ce("span", { style: "font-size:10px;color:var(--muted);padding:4px 0" }, "Test this yourself"));
+    }
+    row2.append(acts);
+    card.append(row2);
+    return card;
+  }
+
+  /** Open a small picker to assign a Jira UAT item to a partner's dossier. */
+  function _openPartnerPickerForJiraUat(ji) {
+    var overlay = ce("div", { class: "modal-backdrop", style: "display:flex" });
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+    var modal = ce("div", { class: "modal", style: "max-width:360px" });
+    modal.append(ce("h2", { style: "margin:0 0 8px" }, "Add to dossier"));
+    modal.append(ce("div", { class: "sub" }, ji.key + " — " + ji.summary.slice(0, 60)));
+    var list = ce("div", { style: "max-height:300px;overflow:auto" });
+    (STATE.partners || []).forEach(function (p) {
+      list.append(ce("div", {
+        class: "view-row", style: "cursor:pointer;padding:6px 8px",
+        onclick: function () { addJiraUatToDossier(ji, p.id); overlay.remove(); renderMyTasksView(); }
+      }, [
+        ce("span", { style: "font-weight:600;font-size:12px" }, p.name || "(unnamed)"),
+        ce("span", { style: "font-size:10px;color:var(--muted);margin-left:8px" }, p.email || "")
+      ]));
+    });
+    modal.append(list);
+    modal.append(ce("div", { class: "footer" }, [
+      ce("button", { class: "btn", onclick: function () { overlay.remove(); } }, "Cancel")
+    ]));
+    overlay.append(modal);
+    document.body.append(overlay);
   }
 
   // ============================================================
@@ -6479,6 +6763,10 @@
       renderThisWeekPanel(filterPanel);
     } else if (filter === "all-uat") {
       renderAllUatPanel(filterPanel);
+      // Auto-scan Jira UAT on first visit (lazy load)
+      if (!jiraUatCache.lastScanAt && !jiraUatCache.scanInProgress) {
+        scanJiraUatItems().then(function () { try { renderMyTasksView(); } catch (e) {} }).catch(function (e) { console.warn("[UAT auto-scan]", e); });
+      }
     } else if (filter === "must-tasks") {
       renderMustTasksPanel(filterPanel);
     } else if (filter === "needs-attention") {
