@@ -6387,6 +6387,11 @@
   function _openPartnerPickerForJiraUat(ji) {
     var overlay = ce("div", { class: "modal-backdrop", style: "display:flex" });
     overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+    // TSKMGR-81 fix: block Backspace from closing modal / navigating back
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace") { e.stopPropagation(); if (!(e.target && /^(input|textarea|select)$/i.test(e.target.tagName))) e.preventDefault(); }
+      if (e.key === "Escape") overlay.remove();
+    });
     var modal = ce("div", { class: "modal", style: "max-width:360px" });
     modal.append(ce("h2", { style: "margin:0 0 8px" }, "Add to dossier"));
     modal.append(ce("div", { class: "sub" }, ji.key + " — " + ji.summary.slice(0, 60)));
@@ -8821,6 +8826,21 @@
     // Use a dynamically-created backdrop matching the existing .modal-backdrop pattern
     var overlay = ce("div", { class: "modal-backdrop", style: "display:flex" });
     overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+    // TSKMGR-81 fix: prevent Backspace from closing the modal or triggering browser back.
+    // Backspace inside inputs should only delete characters; outside inputs, do nothing.
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace") {
+        var tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
+        var isEditable = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+        if (isEditable) {
+          e.stopPropagation(); // let the input handle it, but don't let it bubble to global handlers
+        } else {
+          e.preventDefault(); // not in an input — block entirely
+          e.stopPropagation();
+        }
+      }
+      if (e.key === "Escape") { overlay.remove(); }
+    });
     var modal = ce("div", { class: "modal", style: "max-width:440px" });
     modal.append(ce("h2", { style: "margin:0 0 4px" }, "Create filter rule"));
     modal.append(ce("div", { class: "sub" },
