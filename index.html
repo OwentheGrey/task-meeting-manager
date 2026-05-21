@@ -900,6 +900,11 @@
   .uat-mirror-block h3 { display: flex; align-items: baseline; gap: 6px; }
   .uat-mirror-block .count { font-size: 11px; color: var(--muted); font-weight: 400; }
   .uat-mirror-jump { color: var(--muted); text-decoration: underline; }
+  /* Project assignment pill */
+  .pill-select.proj-none { background: rgba(0,0,0,.04); color: var(--muted); border: 1px dashed var(--line); }
+  .pill-select.proj-set  { background: rgba(20,140,130,.13); color: #0e7a72; border: 1px solid rgba(20,140,130,.28); }
+  .theme-dark .pill-select.proj-none { background: rgba(255,255,255,.04); }
+  .theme-dark .pill-select.proj-set  { background: rgba(45,212,191,.15); color: #5eead4; border-color: rgba(45,212,191,.30); }
   .theme-dark .pill-select.uat-col-none { background: rgba(255,255,255,.04); }
   .theme-dark .uat-project-head { background: rgba(255,255,255,.04); }
   .theme-dark .uat-days { background: rgba(255,255,255,.05); }
@@ -3727,6 +3732,41 @@
   // user-visible label is now "Progress" via PROGRESS_DEFS tooltip + persist reason.
   function statusSelectEl(item) { return pillSelect(item, "status", ["open","in_progress","blocked","done","cancelled"], PROGRESS_DEFS, "status-", "open", "Set progress"); }
 
+  // Project assignment pill — dynamic options from STATE.projects.
+  // Unlike pillSelect() (static enum), this reads the live project list and maps
+  // item.projectId ↔ project name. Unassigned state is "— PROJECT —" (dashed muted).
+  function projectSelect(item) {
+    var projects = (STATE.projects || []).filter(function (p) { return p.status !== "done"; });
+    var current = item.projectId || "";
+    var currentProj = current ? projects.find(function (p) { return p.id === current; }) : null;
+    var sel = ce("select", {
+      class: "pill-select " + (current ? "proj-set" : "proj-none"),
+      title: currentProj ? currentProj.name : "Assign to project"
+    });
+    // "None" option
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "— PROJECT —";
+    if (!current) noneOpt.selected = true;
+    sel.append(noneOpt);
+    // Active project options — show shortCode (uppercased) when available, else name
+    projects.forEach(function (p) {
+      var o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = (p.shortCode || p.name || p.id).toUpperCase();
+      if (current === p.id) o.selected = true;
+      sel.append(o);
+    });
+    sel.addEventListener("change", function () {
+      item.projectId = sel.value || null;
+      var proj = sel.value ? projects.find(function (p) { return p.id === sel.value; }) : null;
+      sel.className = "pill-select " + (sel.value ? "proj-set" : "proj-none");
+      sel.title = proj ? proj.name : "Assign to project";
+      persistState("Set project");
+    });
+    return sel;
+  }
+
   // v3.4.9 — NEW-badge support. Items get `created_at` stamped at every creation site; the badge
   // is purely time-derived (now − created_at < 120 hours), so no cleanup is needed — it falls off
   // by itself once the threshold is crossed. Items without created_at (legacy) get no badge.
@@ -4404,6 +4444,9 @@
     // Category
     pills.append(ce("span", { class: "td-pill-label" }, "Category"));
     pills.append(categorySelect(item));
+    // Project
+    pills.append(ce("span", { class: "td-pill-label" }, "Project"));
+    pills.append(projectSelect(item));
     // Status (only meaningful for non-agenda items)
     if (itemType !== "agenda") {
       pills.append(ce("span", { class: "td-pill-label" }, "Status"));
@@ -4614,6 +4657,8 @@
     if (!options.locked && itemType !== "agenda") head.append(statusSelectEl(itemData));
     if (itemData.status === "blocked" && itemData.blockedOn) head.append(ce("span", { class: "blocked-on" }, "blocked on: " + itemData.blockedOn));
     if (!options.locked) head.append(categorySelect(itemData));
+    // Project assignment pill — after category, before UAT.
+    if (!options.locked) head.append(projectSelect(itemData));
     // TSKMGR-47 — inline UAT pill (after category, before source-link slot).
     // Editable in normal contexts; in locked contexts (e.g. All UAT view) only renders editable
     // when options.uatEditable === true (the row-contract carve-out for column moves within UAT).
