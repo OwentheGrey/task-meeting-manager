@@ -2782,12 +2782,15 @@
       candidateThreads.push(t);
     });
 
-    // Skip threads already classified within last 24h
+    // Skip threads the user already acted on (dismissed / task-created) — never reclassify these.
+    // Also skip threads classified within the last 24h (allow stale reclassification).
     var now = Date.now();
     var staleMs = 24 * 60 * 60 * 1000;
     candidateThreads = candidateThreads.filter(function (t) {
       var existing = STATE.emailTriage.threads[t.id];
-      if (existing && existing.classifiedAt && (now - new Date(existing.classifiedAt).getTime()) < staleMs) return false;
+      if (!existing) return true;
+      if (existing.dismissed || existing.taskCreated) return false;
+      if (existing.classifiedAt && (now - new Date(existing.classifiedAt).getTime()) < staleMs) return false;
       return true;
     });
 
@@ -2836,6 +2839,7 @@
         });
         var actionableLinks = extractActionableLinks(allPlaintext, allHtml);
 
+        var oldEntry = STATE.emailTriage.threads[t.id] || {};
         STATE.emailTriage.threads[t.id] = {
           id: t.id,
           subject: firstMsg.subject || "(no subject)",
@@ -2852,9 +2856,9 @@
           dueBySource: result.dueBySource || null,
           participants: result.participants || [],
           actionableLinks: actionableLinks,
-          dismissed: false,
-          taskCreated: false,
-          draftCreated: false
+          dismissed: oldEntry.dismissed || false,
+          taskCreated: oldEntry.taskCreated || false,
+          draftCreated: oldEntry.draftCreated || false
         };
         classified++;
         allThreadIds.add(t.id);
