@@ -1,0 +1,4 @@
+versions/
+*.BAK-*
+.DS_Store
+Thumbs.db
