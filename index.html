@@ -12831,5 +12831,134 @@
 })();
 </script>
 
+
+<script>
+(function() {
+  // TSKMGR-91 — Custom spellcheck suggestion menu for Electron/Cowork
+  // Uses Datamuse API for suggestions; works around Electron's missing
+  // native context-menu spell suggestions in iframes.
+  let spellMenu = null;
+
+  function removeSpellMenu() {
+    if (spellMenu) { spellMenu.remove(); spellMenu = null; }
+  }
+
+  function getWordAtCaret(el) {
+    const val = el.value;
+    let pos = el.selectionStart;
+    if (pos === null) return null;
+    let start = pos;
+    while (start > 0 && /\w/.test(val[start - 1])) start--;
+    let end = pos;
+    while (end < val.length && /\w/.test(val[end])) end++;
+    if (start === end) return null;
+    return { word: val.slice(start, end), start, end };
+  }
+
+  async function getSuggestions(word) {
+    try {
+      const res = await fetch(
+        'https://api.datamuse.com/words?sp=' + encodeURIComponent(word) + '&max=6'
+      );
+      const data = await res.json();
+      return data
+        .map(function(d) { return d.word; })
+        .filter(function(w) { return w.toLowerCase() !== word.toLowerCase(); })
+        .slice(0, 5);
+    } catch (e) { return []; }
+  }
+
+  function showSpellMenu(x, y, suggestions, el, wordInfo) {
+    removeSpellMenu();
+    if (!suggestions.length) return;
+
+    spellMenu = document.createElement('div');
+    spellMenu.style.cssText = [
+      'position:fixed',
+      'z-index:99999',
+      'left:' + x + 'px',
+      'top:' + y + 'px',
+      'background:var(--bg)',
+      'border:1px solid var(--line)',
+      'border-radius:6px',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35)',
+      'padding:4px 0',
+      'min-width:160px',
+      'font-family:inherit',
+      'font-size:13px'
+    ].join(';');
+
+    var hdr = document.createElement('div');
+    hdr.textContent = 'Spelling suggestions';
+    hdr.style.cssText = [
+      'padding:4px 12px',
+      'color:var(--muted)',
+      'font-size:11px',
+      'border-bottom:1px solid var(--line)',
+      'margin-bottom:4px'
+    ].join(';');
+    spellMenu.appendChild(hdr);
+
+    suggestions.forEach(function(s) {
+      var item = document.createElement('div');
+      item.textContent = s;
+      item.style.cssText = [
+        'padding:6px 12px',
+        'cursor:pointer',
+        'color:var(--fg)',
+        'border-radius:4px',
+        'margin:0 4px'
+      ].join(';');
+      item.addEventListener('mouseenter', function() {
+        item.style.background = 'var(--tint-medium)';
+      });
+      item.addEventListener('mouseleave', function() {
+        item.style.background = '';
+      });
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var val = el.value;
+        el.value = val.slice(0, wordInfo.start) + s + val.slice(wordInfo.end);
+        el.selectionStart = el.selectionEnd = wordInfo.start + s.length;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        removeSpellMenu();
+      });
+      spellMenu.appendChild(item);
+    });
+
+    document.body.appendChild(spellMenu);
+
+    // Nudge on-screen if the menu overflows the viewport
+    var rect = spellMenu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      spellMenu.style.left = (x - rect.width) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      spellMenu.style.top = (y - rect.height) + 'px';
+    }
+  }
+
+  document.addEventListener('contextmenu', async function(e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    if (el.getAttribute('spellcheck') !== 'true') return;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+
+    e.preventDefault();
+    removeSpellMenu();
+
+    var wordInfo = getWordAtCaret(el);
+    if (!wordInfo) return;
+
+    var suggestions = await getSuggestions(wordInfo.word);
+    showSpellMenu(e.clientX, e.clientY, suggestions, el, wordInfo);
+  }, true);
+
+  document.addEventListener('click', removeSpellMenu, true);
+  document.addEventListener('keydown', removeSpellMenu, true);
+  document.addEventListener('scroll', removeSpellMenu, true);
+})();
+</script>
+
 </body>
 </html>
