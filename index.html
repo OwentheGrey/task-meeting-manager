@@ -852,6 +852,52 @@
   .theme-dark .archive-week-head { background: rgba(255,255,255,.04); }
   .theme-dark .row.row-item .unarchive-btn { background: rgba(255,255,255,.04); }
 
+  /* TSKMGR-87 — Assignment + agenda-flag affordances in All view */
+  .assign-icon-btn, .agenda-flag-btn {
+    background: transparent; border: 1px solid transparent; border-radius: 4px;
+    cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; color: var(--muted);
+    position: relative;
+  }
+  .assign-icon-btn:hover, .agenda-flag-btn:hover { background: var(--tint-medium); color: var(--fg); border-color: var(--line); }
+  .assign-icon-btn.assigned { color: var(--accent); }
+  .agenda-flag-btn.has-targets { color: #d8a814; }
+  .row-inline-popover {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 500;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.14); min-width: 160px; max-width: 240px;
+    padding: 4px 0; font-size: 12px;
+  }
+  .row-inline-popover .pop-section-head {
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    padding: 6px 10px 2px; font-weight: 600;
+  }
+  .row-inline-popover .pop-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px; cursor: pointer; white-space: nowrap;
+  }
+  .row-inline-popover .pop-item:hover { background: var(--tint-medium); }
+  .row-inline-popover .pop-item input[type=checkbox] { margin: 0; }
+  .row-inline-popover .pop-item.active { color: var(--accent); font-weight: 600; }
+  .agenda-chip {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 10px; padding: 1px 5px; border-radius: 8px;
+    background: rgba(216,168,20,.14); color: #8a5e0d; font-weight: 500; border: 1px solid rgba(216,168,20,.3);
+    margin-left: 3px; cursor: default;
+  }
+  :root.theme-dark .agenda-chip { background: rgba(216,168,20,.20); color: #fbbf24; border-color: rgba(216,168,20,.35); }
+  .committee-select-inline {
+    font: inherit; font-size: 11px; padding: 1px 4px; border: 1px solid var(--line);
+    border-radius: 4px; background: var(--bg); color: var(--muted); cursor: pointer;
+    max-width: 120px;
+  }
+  .committee-select-inline:focus { outline: none; box-shadow: 0 0 0 2px rgba(90,62,175,.3); }
+  .proposed-tasks-section { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .proposed-tasks-section h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .proposed-task-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
+  .proposed-task-row .pt-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proposed-task-row .pt-remove { background: transparent; border: none; cursor: pointer; color: var(--muted); font-size: 12px; padding: 0 2px; line-height: 1; }
+  .proposed-task-row .pt-remove:hover { color: var(--bad); }
+
   /* Wave 3 — UAT pill, tester dropdown, nudge button, row highlight, sections */
   .pill-select.uat-col-none { background: rgba(0,0,0,.04); color: var(--muted); border: 1px dashed var(--line); }
   .pill-select.uat-col-test1 { background: rgba(60,120,200,.14); color: #2766c8; border: 1px solid rgba(60,120,200,.3); }
@@ -4772,6 +4818,74 @@
     }
     row.append(right);
 
+    // TSKMGR-87 — All view extras: assign icon + agenda flag icon + committee dropdown + agenda chips
+    if (options.allViewExtras && !options.locked) {
+      // --- Assign icon button (person affordance) ---
+      const assignWrap = ce("span", { style: "position:relative;display:inline-block" });
+      const isAssignedToOwen = !itemData.assigneeEmail || itemData.assigneeEmail.toLowerCase() === OWNER_EMAIL.toLowerCase();
+      const assignBtn = ce("button", {
+        class: "assign-icon-btn" + (itemData.assigneeEmail ? " assigned" : ""),
+        title: "Assign task to…",
+        onclick: function (ev) {
+          ev.stopPropagation();
+          openAssignPopover(assignBtn, assignWrap, itemData, function () {
+            renderRoster(); renderDossier();
+          });
+        }
+      }, "👤");
+      assignWrap.append(assignBtn);
+      right.append(assignWrap);
+
+      // --- Agenda flag button ---
+      const flagWrap = ce("span", { style: "position:relative;display:inline-block" });
+      const hasTargets = itemData.agenda_targets && itemData.agenda_targets.length > 0;
+      const flagBtn = ce("button", {
+        class: "agenda-flag-btn" + (hasTargets ? " has-targets" : ""),
+        title: "Flag for agenda…",
+        onclick: function (ev) {
+          ev.stopPropagation();
+          openAgendaFlagPopover(flagBtn, flagWrap, itemData, function () {
+            renderRoster(); renderDossier();
+          });
+        }
+      }, "🗓");
+      flagWrap.append(flagBtn);
+      right.append(flagWrap);
+
+      // --- Agenda chips ---
+      if (hasTargets) {
+        const chipWrap = ce("div", { style: "display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end;margin-top:2px" });
+        (itemData.agenda_targets || []).forEach(function (t) {
+          let label = t.id;
+          if (t.kind === "partner") {
+            const p = (STATE.partners || []).find(x => x.id === t.id);
+            if (p) label = derivePartnerShortCode(STATE.partners, p) || (p.name || "").split(" ")[0] || t.id;
+          } else if (t.kind === "committee") {
+            const co = (STATE.committees || []).find(x => x.id === t.id);
+            if (co) label = co.shortCode || (co.name || "").split(" ")[0] || t.id;
+          }
+          chipWrap.append(ce("span", { class: "agenda-chip", title: "Flagged for " + (t.kind || "") + ": " + label }, "🗓 " + label));
+        });
+        right.append(chipWrap);
+      }
+
+      // --- Committee assignment dropdown ---
+      const coSel = ce("select", { class: "committee-select-inline", title: "Assign to committee" });
+      const blankOpt = ce("option", { value: "" }, "— committee —");
+      if (!itemData.committeeId) blankOpt.selected = true;
+      coSel.append(blankOpt);
+      (STATE.committees || []).forEach(function (co) {
+        const opt = ce("option", { value: co.id }, co.shortCode ? co.shortCode + " – " + (co.name || co.id) : (co.name || co.id));
+        if (itemData.committeeId === co.id) opt.selected = true;
+        coSel.append(opt);
+      });
+      coSel.addEventListener("change", function () {
+        itemData.committeeId = coSel.value || null;
+        persistState("Assign committee (TSKMGR-87)");
+      });
+      right.append(coSel);
+    }
+
     // TSKMGR-67 — Click anywhere on the row outside an inline-editable affordance opens the
     // task detail modal. The selector mirrors every interactive sub-control we already render
     // into the row so single-click editing keeps working.
@@ -4783,13 +4897,187 @@
         return;
       }
       // Skip when click landed on an editable affordance, pill, link, or other inline button
-      if (t.closest && t.closest(".editable, .pill-select, .tester-select, .jira-link, .source-link-slot, .nudge-btn, .triage-btn, .unarchive-btn, input, textarea, select, button, a")) {
+      if (t.closest && t.closest(".editable, .pill-select, .tester-select, .jira-link, .source-link-slot, .nudge-btn, .triage-btn, .unarchive-btn, .assign-icon-btn, .agenda-flag-btn, .row-inline-popover, .committee-select-inline, input, textarea, select, button, a")) {
         return;
       }
       openTaskDetailModal(itemData, source);
     });
 
     return row;
+  }
+
+  // TSKMGR-87 — Shared popover close utility (closes any open inline popover)
+  let _activePopoverCleanup = null;
+  function _closeActivePopover() {
+    if (_activePopoverCleanup) { _activePopoverCleanup(); _activePopoverCleanup = null; }
+  }
+
+  // TSKMGR-87 — Assignment popover
+  function openAssignPopover(anchorBtn, wrapEl, item, onAssign) {
+    _closeActivePopover();
+    const pop = ce("div", { class: "row-inline-popover" });
+    // "Me" option
+    const meItem = ce("div", { class: "pop-item" + (item.assigneeEmail && item.assigneeEmail.toLowerCase() === OWNER_EMAIL.toLowerCase() ? " active" : "") }, "👤 Me (Owen)");
+    meItem.addEventListener("click", function (e) {
+      e.stopPropagation();
+      item.assigneeEmail = OWNER_EMAIL;
+      persistState("Assign task to Owen (TSKMGR-87)");
+      _closeActivePopover();
+      if (onAssign) onAssign();
+    });
+    pop.append(meItem);
+    // Partner options
+    if ((STATE.partners || []).length) {
+      pop.append(ce("div", { class: "pop-section-head" }, "Partners"));
+      (STATE.partners || []).forEach(function (p) {
+        const pEmail = p.email || p.id;
+        const isActive = item.assigneeEmail && item.assigneeEmail.toLowerCase() === (p.email || "").toLowerCase();
+        const pItem = ce("div", { class: "pop-item" + (isActive ? " active" : "") }, (p.name || pEmail));
+        pItem.addEventListener("click", function (e) {
+          e.stopPropagation();
+          item.assigneeEmail = p.email || p.id;
+          persistState("Assign task to partner (TSKMGR-87)");
+          _closeActivePopover();
+          if (onAssign) onAssign();
+        });
+        pop.append(pItem);
+      });
+    }
+    wrapEl.append(pop);
+    // Close on outside click or Escape
+    const outsideClick = function (e) {
+      if (!wrapEl.contains(e.target)) _closeActivePopover();
+    };
+    const escKey = function (e) {
+      if (e.key === "Escape") _closeActivePopover();
+    };
+    setTimeout(function () {
+      document.addEventListener("click", outsideClick, { capture: true, once: false });
+      document.addEventListener("keydown", escKey, { once: false });
+    }, 10);
+    _activePopoverCleanup = function () {
+      if (pop.parentNode) pop.parentNode.removeChild(pop);
+      document.removeEventListener("click", outsideClick, { capture: true });
+      document.removeEventListener("keydown", escKey);
+    };
+  }
+
+  // TSKMGR-87 — Agenda flag popover
+  function openAgendaFlagPopover(anchorBtn, wrapEl, item, onToggle) {
+    _closeActivePopover();
+    if (!item.agenda_targets) item.agenda_targets = [];
+    const pop = ce("div", { class: "row-inline-popover" });
+
+    function isTargeted(kind, id) {
+      return (item.agenda_targets || []).some(function (t) { return t.kind === kind && t.id === id; });
+    }
+    function toggleTarget(kind, id) {
+      if (!item.agenda_targets) item.agenda_targets = [];
+      var idx = item.agenda_targets.findIndex(function (t) { return t.kind === kind && t.id === id; });
+      if (idx >= 0) {
+        item.agenda_targets.splice(idx, 1);
+      } else {
+        item.agenda_targets.push({ kind: kind, id: id });
+      }
+      persistState("Toggle agenda target (TSKMGR-87)");
+      // Refresh popover checkboxes without closing
+      pop.querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+        var ck = cb.getAttribute("data-kind");
+        var ci = cb.getAttribute("data-id");
+        if (ck && ci) cb.checked = isTargeted(ck, ci);
+      });
+      anchorBtn.className = "agenda-flag-btn" + ((item.agenda_targets && item.agenda_targets.length > 0) ? " has-targets" : "");
+      if (onToggle) onToggle();
+    }
+
+    // Partners section
+    if ((STATE.partners || []).length) {
+      pop.append(ce("div", { class: "pop-section-head" }, "Partners"));
+      (STATE.partners || []).forEach(function (p) {
+        const row = ce("div", { class: "pop-item" });
+        const cb = ce("input", { type: "checkbox", "data-kind": "partner", "data-id": p.id });
+        cb.checked = isTargeted("partner", p.id);
+        cb.addEventListener("change", function (e) { e.stopPropagation(); toggleTarget("partner", p.id); });
+        row.append(cb);
+        row.append(document.createTextNode(p.name || p.id));
+        row.addEventListener("click", function (e) {
+          if (e.target === cb) return;
+          e.stopPropagation();
+          cb.checked = !cb.checked;
+          toggleTarget("partner", p.id);
+        });
+        pop.append(row);
+      });
+    }
+    // Committees section
+    if ((STATE.committees || []).length) {
+      pop.append(ce("div", { class: "pop-section-head" }, "Committees"));
+      (STATE.committees || []).forEach(function (co) {
+        const row = ce("div", { class: "pop-item" });
+        const cb = ce("input", { type: "checkbox", "data-kind": "committee", "data-id": co.id });
+        cb.checked = isTargeted("committee", co.id);
+        cb.addEventListener("change", function (e) { e.stopPropagation(); toggleTarget("committee", co.id); });
+        row.append(cb);
+        row.append(document.createTextNode(co.name || co.id));
+        row.addEventListener("click", function (e) {
+          if (e.target === cb) return;
+          e.stopPropagation();
+          cb.checked = !cb.checked;
+          toggleTarget("committee", co.id);
+        });
+        pop.append(row);
+      });
+    }
+    if (!(STATE.partners || []).length && !(STATE.committees || []).length) {
+      pop.append(ce("div", { class: "pop-item" }, "(No partners or committees yet)"));
+    }
+    wrapEl.append(pop);
+    // Close on outside click or Escape
+    const outsideClick = function (e) {
+      if (!wrapEl.contains(e.target)) _closeActivePopover();
+    };
+    const escKey = function (e) {
+      if (e.key === "Escape") _closeActivePopover();
+    };
+    setTimeout(function () {
+      document.addEventListener("click", outsideClick, { capture: true, once: false });
+      document.addEventListener("keydown", escKey, { once: false });
+    }, 10);
+    _activePopoverCleanup = function () {
+      if (pop.parentNode) pop.parentNode.removeChild(pop);
+      document.removeEventListener("click", outsideClick, { capture: true });
+      document.removeEventListener("keydown", escKey);
+    };
+  }
+
+  // TSKMGR-87 — "Proposed for discussion" panel: tasks flagged for this partner/committee
+  function renderProposedForDiscussion(kind, id) {
+    const allEntries = collectMyTasksAll();
+    const proposed = allEntries.filter(function (e) {
+      return (e.item.agenda_targets || []).some(function (t) { return t.kind === kind && t.id === id; });
+    });
+    if (!proposed.length) return null;
+    const sec = ce("div", { class: "proposed-tasks-section" });
+    sec.append(ce("h4", {}, "Proposed for discussion"));
+    proposed.forEach(function (e) {
+      const it = e.item;
+      const row = ce("div", { class: "proposed-task-row" });
+      row.append(ce("span", {}, "🗓"));
+      const titleSpan = ce("span", { class: "pt-title" }, it.title || it.text || "(untitled)");
+      row.append(titleSpan);
+      const removeBtn = ce("button", { class: "pt-remove", title: "Remove from agenda queue" }, "×");
+      removeBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!it.agenda_targets) return;
+        var idx = it.agenda_targets.findIndex(function (t) { return t.kind === kind && t.id === id; });
+        if (idx >= 0) it.agenda_targets.splice(idx, 1);
+        persistState("Remove agenda target (TSKMGR-87)");
+        renderRoster(); renderDossier();
+      });
+      row.append(removeBtn);
+      sec.append(row);
+    });
+    return sec;
   }
 
   // TSKMGR-47 — Tester directory lookup. Returns a sorted list of { value, label, slackUserId, source }
@@ -5831,7 +6119,12 @@
 
   // TSKMGR-78 — All Tasks panel: every open task grouped by the week of its due date
   function renderAllTasksPanel(panel) {
-    const entries = collectMyTasksAll();
+    // TSKMGR-87 — filter to Owen's tasks only (unassigned or explicitly assigned to Owen)
+    const allEntries = collectMyTasksAll();
+    const entries = allEntries.filter(e => {
+      const ae = e.item.assigneeEmail;
+      return !ae || ae.toLowerCase() === OWNER_EMAIL.toLowerCase();
+    });
     if (!entries.length) {
       panel.append(ce("div", { class: "mytasks-panel-empty" }, "No tasks found across any partner, committee, or project."));
       return;
@@ -5932,7 +6225,7 @@
         head.append(ce("span", { class: "dedup-conf" }, Math.round(info.cluster.confidence * 100) + "% match"));
         groupBox.append(head);
         info.members.forEach(function (e) {
-          groupBox.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType }));
+          groupBox.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType, allViewExtras: true }));
         });
         var actions = ce("div", { class: "dedup-group-actions" });
         actions.append(ce("button", { class: "btn btn-primary", onclick: function () { dedupOpenMergeDialog({ entries: info.members, confidence: info.cluster.confidence, methods: info.cluster.methods }); } }, "Merge"));
@@ -5942,7 +6235,7 @@
       });
       items.forEach(function (e) {
         if (clusterEntryRefs.has(e)) return; // already rendered inside a cluster
-        list.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType }));
+        list.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType, allViewExtras: true }));
       });
       section.append(list);
       panel.append(section);
@@ -5958,7 +6251,7 @@
       var dList = ce("div", { class: "mytasks-list" });
       done.sort(comparePriorityThenDue);
       done.forEach(function (e) {
-        dList.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType }));
+        dList.append(renderTaskRow(e.item, e.source, { onNavigate: function () { gotoTaskSource(e); } }, { itemType: e.itemType, allViewExtras: true }));
       });
       doneSection.append(dList);
       panel.append(doneSection);
@@ -9902,6 +10195,11 @@
     const ai = ce("section", { class: "block" });
     ai.append(ce("h3", {}, ["Action items", ce("span", { class: "pill synth" }, (c.actionItems || []).length + " open")]));
     ai.append(renderActionItemsByDueDate(c.actionItems || [], c));
+    // TSKMGR-87 — Proposed for discussion mirror (tasks flagged for this committee)
+    try {
+      const proposedSec = renderProposedForDiscussion("committee", c.id);
+      if (proposedSec) ai.append(proposedSec);
+    } catch (e) { console.warn("[renderProposedForDiscussion committee]", e); }
     dos.append(ai);
 
     // Recent decisions
@@ -11666,6 +11964,11 @@
       agendaUl.append(li);
     });
     agendaSec.append(agendaUl);
+    // TSKMGR-87 — Proposed for discussion mirror (tasks flagged for this partner)
+    try {
+      const proposedSec = renderProposedForDiscussion("partner", p.id);
+      if (proposedSec) agendaSec.append(proposedSec);
+    } catch (e) { console.warn("[renderProposedForDiscussion partner]", e); }
     dos.append(agendaSec);
 
     // v3.4.3a — Cross-pollination from committees (action items where this partner is the assignee)
@@ -12602,363 +12905,4 @@
     if (!entries || entries.length < 2) return null;
     const oldest = _dedupOlderEntry(entries);
     const others = entries.filter(e => e !== oldest);
-    const surviving = oldest.item;
-    const beforeIds = entries.map(_dedupEntryId);
-
-    // Title
-    surviving.title = _dedupSurvivingTitle(entries, userTitleOverride);
-    if (surviving.text != null) surviving.text = surviving.title;
-
-    // Description (combine, but only overwrite if combining yields more content)
-    const combinedDesc = _dedupCombineDescriptions(entries);
-    if (combinedDesc) surviving.description = combinedDesc;
-
-    // Source links (union, stored on .merged_source_links — preserves original
-    // source_link on the surviving record for back-compat with single-link UI).
-    surviving.merged_source_links = _dedupCombineSourceLinks(entries);
-
-    // Confidence (max)
-    const confs = entries.map(e => (typeof e.item.confidence === "number" ? e.item.confidence : 0));
-    surviving.confidence = confs.reduce((acc, c) => Math.max(acc, c), 0);
-
-    // created_at (earliest)
-    const minCreated = entries.map(e => e.item.created_at).filter(Boolean).sort()[0];
-    if (minCreated) surviving.created_at = minCreated;
-
-    // project_id: keep oldest's; flag if conflict
-    const pids = Array.from(new Set(entries.map(e => _dedupProjectId(e.item)).filter(Boolean)));
-    if (pids.length > 1) surviving.project_id_conflict = pids;
-
-    // Mark provenance on surviving
-    surviving.merged_at = nowIso();
-    surviving.merged_from_count = entries.length;
-
-    // Remove the others
-    others.forEach(_dedupRemoveEntry);
-
-    // Record feedback
-    _dedupRecordFeedback({
-      pair: beforeIds,
-      decision: "merged",
-      merged_id: _dedupEntryId(oldest),
-      original_titles: entries.map(e => _dedupTitleOf(e.item)),
-      confidence: surviving.confidence || null,
-      timestamp: nowIso()
-    });
-
-    return surviving;
-  }
-
-  // -- Reject (suppress pair permanently) ----------------------
-  function dedupRejectCluster(entries) {
-    if (!entries || entries.length < 2) return;
-    const ids = entries.map(_dedupEntryId);
-    // Record all pairwise rejections so any future re-flag is suppressed
-    // for these specific pairs only (either task remains eligible to match
-    // new, unrelated tasks).
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        _dedupRecordFeedback({
-          pair: [ids[i], ids[j]],
-          decision: "rejected",
-          merged_id: null,
-          original_titles: [_dedupTitleOf(entries[i].item), _dedupTitleOf(entries[j].item)],
-          confidence: null,
-          timestamp: nowIso()
-        });
-      }
-    }
-  }
-
-  // -- Public API exposed on window for debugging --------------
-  window.__dedup = {
-    detectClusters: dedupDetectClusters,
-    mergeCluster: dedupMergeCluster,
-    rejectCluster: dedupRejectCluster,
-    countPending: countPendingDuplicates,
-    threshold: DEDUP_AUTO_MERGE_THRESHOLD,
-    feedback: () => STATE.dedupFeedback || []
-  };
-
-  // ============================================================
-  // TSKMGR-79 — Merge confirmation dialog
-  // ============================================================
-  let _dedupActiveCluster = null;
-
-  function dedupOpenMergeDialog(cluster) {
-    _dedupActiveCluster = cluster;
-    const back = document.getElementById("dedup-merge-backdrop");
-    const body = document.getElementById("dedup-merge-body");
-    if (!back || !body) return;
-    body.innerHTML = "";
-    body.append(_dedupBuildMergeDialogBody(cluster));
-    back.classList.add("open");
-  }
-  function dedupCloseMergeDialog() {
-    const back = document.getElementById("dedup-merge-backdrop");
-    if (back) back.classList.remove("open");
-    _dedupActiveCluster = null;
-  }
-  function _dedupBuildMergeDialogBody(cluster) {
-    const wrap = ce("div");
-    // Header
-    wrap.append(ce("div", { class: "td-title-row" }, ce("span", { class: "td-title" }, "Merge duplicate tasks")));
-
-    const oldest = _dedupOlderEntry(cluster.entries);
-    const oldestAgeHrs = _dedupHoursAgo(oldest.item.created_at);
-    const allRecent = cluster.entries.every(e => _dedupHoursAgo(e.item.created_at) <= 24);
-
-    // Originals list (read-only)
-    const origSection = ce("div", { class: "td-section" });
-    origSection.append(ce("div", { class: "td-section-head" }, "Original tasks (" + cluster.entries.length + ")"));
-    cluster.entries.forEach(e => {
-      const row = ce("div", { class: "dedup-orig-row" });
-      const lbl = sourceLabelFor(e.item) || (e.source && e.source.name) || "Source";
-      row.append(ce("span", { class: "dedup-orig-src" }, lbl));
-      row.append(ce("span", { class: "dedup-orig-title" }, _dedupTitleOf(e.item) || "(no title)"));
-      if (e.item.created_at) {
-        const ageHrs = _dedupHoursAgo(e.item.created_at);
-        const ageLabel = ageHrs < 24 ? Math.round(ageHrs) + "h ago" : Math.round(ageHrs / 24) + "d ago";
-        row.append(ce("span", { class: "dedup-orig-age" }, ageLabel));
-      }
-      origSection.append(row);
-    });
-    wrap.append(origSection);
-
-    // Merged title field
-    const titleSection = ce("div", { class: "td-section" });
-    titleSection.append(ce("div", { class: "td-section-head" }, "Merged title"));
-    let titleHint = "";
-    if (!allRecent) {
-      titleHint = "Oldest task is >24h old — its title is preserved by default. Edit below to override.";
-    } else {
-      titleHint = "Both tasks are <24h old — choose a title that combines both. (Claude-powered suggestion coming in TSKMGR-84.)";
-    }
-    titleSection.append(ce("div", { class: "dedup-hint" }, titleHint));
-    const titleInput = ce("input", {
-      type: "text",
-      spellcheck: "true",
-      class: "dedup-title-input",
-      id: "dedup-merge-title-input",
-      value: _dedupSurvivingTitle(cluster.entries, null)
-    });
-    titleSection.append(titleInput);
-    wrap.append(titleSection);
-
-    // Combined description preview
-    const descSection = ce("div", { class: "td-section" });
-    descSection.append(ce("div", { class: "td-section-head" }, "Combined description (preview)"));
-    const combined = _dedupCombineDescriptions(cluster.entries) || "(no descriptions on these tasks)";
-    descSection.append(renderDescriptionMarkdown(combined));
-    wrap.append(descSection);
-
-    // Source links list
-    const links = _dedupCombineSourceLinks(cluster.entries);
-    if (links.length) {
-      const linkSection = ce("div", { class: "td-section" });
-      linkSection.append(ce("div", { class: "td-section-head" }, "Source links preserved"));
-      const ul = ce("ul", { class: "td-attached-list" });
-      links.forEach(l => {
-        const li = ce("li");
-        li.append(ce("a", { href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.title || l.url));
-        ul.append(li);
-      });
-      linkSection.append(ul);
-      wrap.append(linkSection);
-    }
-
-    // Footer buttons
-    const footer = ce("div", { class: "td-footer dedup-footer" });
-    const cancelBtn = ce("button", { class: "btn", onclick: dedupCloseMergeDialog }, "Cancel");
-    const confirmBtn = ce("button", { class: "btn btn-primary", onclick: function () {
-      const inp = document.getElementById("dedup-merge-title-input");
-      const override = inp ? inp.value.trim() : null;
-      dedupMergeCluster(cluster.entries, override || null);
-      dedupCloseMergeDialog();
-      persistState("Merge duplicate cluster (TSKMGR-79)");
-      try { renderRoster(); renderDossier(); } catch (e) {}
-    } }, "Confirm merge");
-    footer.append(cancelBtn);
-    footer.append(confirmBtn);
-    wrap.append(footer);
-
-    return wrap;
-  }
-
-  // ============================================================
-  // TSKMGR-79 — Inject merge-dialog DOM + grouping CSS once
-  // ============================================================
-  (function _dedupInstallDom() {
-    if (document.getElementById("dedup-merge-backdrop")) return;
-    // Backdrop + modal scaffold
-    const back = document.createElement("div");
-    back.id = "dedup-merge-backdrop";
-    back.className = "task-detail-backdrop";
-    back.innerHTML = '<div class="task-detail-modal" id="dedup-merge-modal" tabindex="-1">' +
-      '<button class="td-close" onclick="(function(){var b=document.getElementById(\'dedup-merge-backdrop\');if(b)b.classList.remove(\'open\');})()">×</button>' +
-      '<div id="dedup-merge-body"></div>' +
-      '</div>';
-    document.body.appendChild(back);
-
-    // CSS for grouping + dialog
-    const css = document.createElement("style");
-    css.id = "dedup-css";
-    css.textContent = [
-      ".dedup-group { border: 2px solid #c1392b; border-radius: 8px; padding: 10px 12px 12px; margin: 12px 0; background: rgba(193,57,43,.04); }",
-      ".dedup-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: #c1392b; }",
-      ".dedup-group-head .dedup-conf { color: var(--muted); font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 11px; }",
-      ".dedup-group-actions { display: flex; gap: 6px; margin-top: 8px; }",
-      ".dedup-group-actions .btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }",
-      ".dedup-group-actions .btn:hover { background: rgba(0,0,0,.04); }",
-      ".dedup-group-actions .btn.btn-primary { background: #c1392b; color: #fff; border-color: #c1392b; }",
-      ".dedup-group-actions .btn.btn-primary:hover { background: #a02e22; }",
-      ".dedup-orig-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }",
-      ".dedup-orig-row:last-child { border-bottom: 0; }",
-      ".dedup-orig-src { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 56px; }",
-      ".dedup-orig-title { flex: 1; }",
-      ".dedup-orig-age { font-size: 11px; color: var(--muted); }",
-      ".dedup-hint { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-style: italic; }",
-      ".dedup-title-input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); font-size: 14px; }",
-      ".dedup-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }",
-      ".mytasks-tab .tab-badge.dedup { background: #c1392b; }"
-    ].join("\n");
-    document.head.appendChild(css);
-  })();
-
-  // ============================================================
-  // end TSKMGR-79 — DEDUPLICATION ENGINE
-  // ============================================================
-})();
-</script>
-
-
-<script>
-(function() {
-  // TSKMGR-91 — Custom spellcheck suggestion menu for Electron/Cowork
-  // Uses Datamuse API for suggestions; works around Electron's missing
-  // native context-menu spell suggestions in iframes.
-  let spellMenu = null;
-
-  function removeSpellMenu() {
-    if (spellMenu) { spellMenu.remove(); spellMenu = null; }
-  }
-
-  function getWordAtCaret(el) {
-    const val = el.value;
-    let pos = el.selectionStart;
-    if (pos === null) return null;
-    let start = pos;
-    while (start > 0 && /\w/.test(val[start - 1])) start--;
-    let end = pos;
-    while (end < val.length && /\w/.test(val[end])) end++;
-    if (start === end) return null;
-    return { word: val.slice(start, end), start, end };
-  }
-
-  async function getSuggestions(word) {
-    try {
-      const res = await fetch(
-        'https://api.datamuse.com/words?sp=' + encodeURIComponent(word) + '&max=6'
-      );
-      const data = await res.json();
-      return data
-        .map(function(d) { return d.word; })
-        .filter(function(w) { return w.toLowerCase() !== word.toLowerCase(); })
-        .slice(0, 5);
-    } catch (e) { return []; }
-  }
-
-  function showSpellMenu(x, y, suggestions, el, wordInfo) {
-    removeSpellMenu();
-    if (!suggestions.length) return;
-
-    spellMenu = document.createElement('div');
-    spellMenu.style.cssText = [
-      'position:fixed',
-      'z-index:99999',
-      'left:' + x + 'px',
-      'top:' + y + 'px',
-      'background:var(--bg)',
-      'border:1px solid var(--line)',
-      'border-radius:6px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35)',
-      'padding:4px 0',
-      'min-width:160px',
-      'font-family:inherit',
-      'font-size:13px'
-    ].join(';');
-
-    var hdr = document.createElement('div');
-    hdr.textContent = 'Spelling suggestions';
-    hdr.style.cssText = [
-      'padding:4px 12px',
-      'color:var(--muted)',
-      'font-size:11px',
-      'border-bottom:1px solid var(--line)',
-      'margin-bottom:4px'
-    ].join(';');
-    spellMenu.appendChild(hdr);
-
-    suggestions.forEach(function(s) {
-      var item = document.createElement('div');
-      item.textContent = s;
-      item.style.cssText = [
-        'padding:6px 12px',
-        'cursor:pointer',
-        'color:var(--fg)',
-        'border-radius:4px',
-        'margin:0 4px'
-      ].join(';');
-      item.addEventListener('mouseenter', function() {
-        item.style.background = 'var(--tint-medium)';
-      });
-      item.addEventListener('mouseleave', function() {
-        item.style.background = '';
-      });
-      item.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        var val = el.value;
-        el.value = val.slice(0, wordInfo.start) + s + val.slice(wordInfo.end);
-        el.selectionStart = el.selectionEnd = wordInfo.start + s.length;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        removeSpellMenu();
-      });
-      spellMenu.appendChild(item);
-    });
-
-    document.body.appendChild(spellMenu);
-
-    // Nudge on-screen if the menu overflows the viewport
-    var rect = spellMenu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-      spellMenu.style.left = (x - rect.width) + 'px';
-    }
-    if (rect.bottom > window.innerHeight) {
-      spellMenu.style.top = (y - rect.height) + 'px';
-    }
-  }
-
-  document.addEventListener('contextmenu', async function(e) {
-    var el = e.target;
-    if (!el || !el.getAttribute) return;
-    if (el.getAttribute('spellcheck') !== 'true') return;
-    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
-
-    e.preventDefault();
-    removeSpellMenu();
-
-    var wordInfo = getWordAtCaret(el);
-    if (!wordInfo) return;
-
-    var suggestions = await getSuggestions(wordInfo.word);
-    showSpellMenu(e.clientX, e.clientY, suggestions, el, wordInfo);
-  }, true);
-
-  document.addEventListener('click', removeSpellMenu, true);
-  document.addEventListener('keydown', removeSpellMenu, true);
-  document.addEventListener('scroll', removeSpellMenu, true);
-})();
-</script>
-
-</body>
-</html>
+    const surviving = oldest.ite
