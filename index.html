@@ -12530,6 +12530,45 @@
   const DEDUP_AUTO_MERGE_THRESHOLD = 0.85;
   const DEDUP_REVIEW_THRESHOLD = 0.55; // below this, don't even flag
 
+  // -- Flat collector (TSKMGR-79 spec: _dedupAllItems) ----------
+  // Wraps collectMyTasksAll() and adds spec-compatible collection labels.
+  function _dedupAllItems() {
+    var raw = (typeof collectMyTasksAll === "function") ? collectMyTasksAll() : [];
+    return raw.map(function(e) {
+      var src = e.source || {};
+      var collection = "partner_commitment";
+      if (src.kind === "committee" && e.itemType === "action")  collection = "committee_action";
+      else if (src.kind === "committee" && e.itemType === "agenda") collection = "committee_agenda";
+      else if (src.kind === "project")                          collection = "project_action";
+      else if (src.kind === "partner"  && e.itemType === "agenda") collection = "partner_agenda";
+      return {
+        item: e.item, collection: collection,
+        sourceId: src.id, sourceKind: src.kind, lane: src.lane || null,
+        source: e.source, itemType: e.itemType
+      };
+    });
+  }
+
+  // -- Source URL normalisation (string or array) ---------------
+  function _dedupSourceUrls(item) {
+    if (!item) return [];
+    var raw = item.source_url || item.source_link || null;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(function(u){ return String(u).trim(); }).filter(Boolean);
+    return [String(raw).trim()].filter(Boolean);
+  }
+
+  // -- Case 1: source-URL exact match → confidence 0.95 --------
+  function _dedupDetect_sourceUrl(a, b) {
+    var ua = _dedupSourceUrls(a), ub = _dedupSourceUrls(b);
+    if (!ua.length || !ub.length) return { confidence: 0, method: "sourceUrl:no-urls" };
+    var setB = new Set(ub);
+    for (var i = 0; i < ua.length; i++) {
+      if (setB.has(ua[i])) return { confidence: 0.95, method: "sourceUrl:exact-match" };
+    }
+    return { confidence: 0, method: "sourceUrl:no-match" };
+  }
+
   // -- Source type extraction ---------------------------------
   // The artifact uses item.source_type with values: gemini_notes, gmail, slack,
   // gdrive, jira, manual, cowork_chat, other. We coalesce calendar-ish items
@@ -12674,26 +12713,61 @@
     return { confidence: conf, method: "anyToAny:semantic-fallback" };
   }
 
-  // -- Dispatcher: pick the right detector for a source pair ----
+  // -- Dispatcher: TSKMGR-79 three-case routing -----------------
+  //   Case 1 — source_url exact match             → 0.95 (auto-merge)
+  //   Case 2 — calendar/meeting ±2d + title ≥0.70 → 0.85 (auto-merge)
+  //           OR generic title sim ≥ 0.85          → 0.80 (review)
+  //   Case 3 — manual (no source_url) vs ingest,
+  //             title sim ≥ 0.75                   → 0.72 (review, no auto-merge)
   function _dedupDispatchDetect(a, b) {
-    const sa = _dedupSourceType(a), sb = _dedupSourceType(b);
-    const isJira = (t) => t === "jira";
-    const isEmail = (t) => t === "gmail";
-    const isSlack = (t) => t === "slack";
-    const isNote = (t) => t === "gemini_notes";
+    // Case 1 — source URL match
+    var urlResult = _dedupDetect_sourceUrl(a, b);
+    if (urlResult.confidence >= 0.90) return urlResult;
 
+    var sa = _dedupSourceType(a), sb = _dedupSourceType(b);
+    var isJira  = function(t){ return t === "jira"; };
+    var isEmail = function(t){ return t === "gmail"; };
+    var isSlack = function(t){ return t === "slack"; };
+    var isNote  = function(t){ return t === "gemini_notes" || t === "calendar"; };
+    var isManual = function(item){
+      return (!item.source_url && !item.source_link) ||
+        item.source_type === "manual" || item.source_type === "cowork_chat";
+    };
+
+    // Case 3 — one manual, one ingest
+    var aM = isManual(a), bM = isManual(b);
+    if (aM !== bM) {
+      var tSim = _dedupJaccard(
+        new Set(_dedupTokens(_dedupTitleOf(a))),
+        new Set(_dedupTokens(_dedupTitleOf(b)))
+      );
+      if (tSim >= 0.75) return { confidence: 0.72, method: "manualVsIngest:title-sim" };
+      return { confidence: 0, method: "manualVsIngest:no-match" };
+    }
+
+    // Case 2 — calendar / meeting-note path
+    if (isNote(sa) || isNote(sb)) {
+      var noteRes = _dedupDetect_calendarToMeetingNote(a, b);
+      if (noteRes.confidence >= 0.70) {
+        noteRes.confidence = 0.85;
+        noteRes.method = "calendarToMeetingNote:title+proximity";
+      }
+      return noteRes;
+    }
+
+    // Type-specific dispatchers
     if (isJira(sa) && isJira(sb)) return _dedupDetect_jiraToJira(a, b);
     if ((isJira(sa) && (isSlack(sb) || isEmail(sb))) ||
-        (isJira(sb) && (isSlack(sa) || isEmail(sa)))) {
+        (isJira(sb) && (isSlack(sa) || isEmail(sa))))
       return _dedupDetect_jiraToSlackOrEmail(a, b);
-    }
     if (isEmail(sa) && isEmail(sb)) return _dedupDetect_emailToEmail(a, b);
-    if (isNote(sa) && isNote(sb)) return _dedupDetect_calendarToMeetingNote(a, b);
-    if ((isNote(sa) && (isEmail(sb) || isSlack(sb))) ||
-        (isNote(sb) && (isEmail(sa) || isSlack(sa)))) {
-      // Meeting note ↔ email/slack: use the meeting/note detector since it handles labels.
-      return _dedupDetect_calendarToMeetingNote(a, b);
-    }
+
+    // Generic fallback — Case 2 title-sim check
+    var titleSim = _dedupJaccard(
+      new Set(_dedupTokens(_dedupTitleOf(a))),
+      new Set(_dedupTokens(_dedupTitleOf(b)))
+    );
+    if (titleSim >= 0.85) return { confidence: 0.80, method: "titleSim:high-confidence" };
     return _dedupDetect_anyToAny(a, b);
   }
 
@@ -12760,58 +12834,123 @@
     return parts.join(":");
   }
 
-  // -- Run detection over all open tasks -----------------------
-  // Returns an array of clusters: [{ entries: [entry, ...], confidence, method }]
-  // Pairs above DEDUP_AUTO_MERGE_THRESHOLD are excluded — they're auto-merge
-  // candidates handled at ingest time (or the next batch sweep). Pairs below
-  // DEDUP_REVIEW_THRESHOLD are dropped entirely (too weak to flag).
+  // -- Auto-merge engine (TSKMGR-79) ---------------------------
+  // Called silently for pairs with confidence ≥ DEDUP_AUTO_MERGE_THRESHOLD.
+  // Manual tasks (no source_url) are never auto-merged.
+  function dedupAutoMerge(entryA, entryB) {
+    var entries = [entryA, entryB];
+    var oldest  = _dedupOlderEntry(entries);
+    var other   = oldest === entryA ? entryB : entryA;
+    var surv    = oldest.item;
+
+    // Union source_url arrays
+    var ua = _dedupSourceUrls(entryA.item), ub = _dedupSourceUrls(entryB.item);
+    var allUrls = Array.from(new Set(ua.concat(ub)));
+    if (allUrls.length > 1)      surv.source_url = allUrls;
+    else if (allUrls.length === 1) surv.source_url = allUrls[0];
+
+    // Combine detail / description with separator
+    var dA = surv.detail || surv.description || "";
+    var dB = other.item.detail || other.item.description || "";
+    if (dB && dB !== dA) {
+      var combined = dA ? (dA + "\n---\n" + dB) : dB;
+      if (surv.detail       != null || other.item.detail       != null) surv.detail       = combined;
+      if (surv.description  != null || other.item.description  != null) surv.description  = combined;
+    }
+
+    // Earliest created_at
+    var minC = [entryA.item.created_at, entryB.item.created_at].filter(Boolean).sort()[0];
+    if (minC) surv.created_at = minC;
+
+    // Provenance
+    surv.merged_at         = (typeof nowIso === "function") ? nowIso() : new Date().toISOString();
+    surv.merged_from_count = (surv.merged_from_count || 1) + 1;
+    surv.merged_source_links = _dedupCombineSourceLinks(entries);
+
+    _dedupRemoveEntry(other);
+    _dedupRecordFeedback({
+      pair: [_dedupEntryId(entryA), _dedupEntryId(entryB)],
+      decision: "merged",
+      merged_id: _dedupEntryId(oldest),
+      original_titles: entries.map(function(e){ return _dedupTitleOf(e.item); }),
+      confidence: null,
+      timestamp: (typeof nowIso === "function") ? nowIso() : new Date().toISOString()
+    });
+    try { persistState("Auto-merge duplicate (TSKMGR-79)"); } catch(e) {}
+    return surv;
+  }
+
+  // -- Cluster detection (TSKMGR-79) ----------------------------
+  // Pass 1: auto-merge pairs ≥ DEDUP_AUTO_MERGE_THRESHOLD (non-manual only).
+  // Pass 2: return review clusters for pairs in [REVIEW_THRESHOLD, AUTO_THRESHOLD).
+  // Caches result in STATE.dedupClusters for the badge counter.
   function dedupDetectClusters() {
-    let all;
-    try { all = collectMyTasksAll(); } catch (e) { return []; }
-    // Skip done / cancelled — only flag duplicates among open active tasks.
-    const active = all.filter(e => {
-      const it = e.item;
+    var all;
+    try { all = _dedupAllItems(); } catch (e) { return []; }
+    var active = all.filter(function(e) {
+      var it = e.item;
       return it && it.status !== "done" && it.status !== "cancelled" && !it.completed;
     });
-    const used = new Set();
-    const clusters = [];
-    for (let i = 0; i < active.length; i++) {
-      const a = active[i];
-      const aId = _dedupEntryId(a);
-      if (used.has(aId)) continue;
-      const matches = [];
-      for (let j = i + 1; j < active.length; j++) {
-        const b = active[j];
-        const bId = _dedupEntryId(b);
-        if (used.has(bId)) continue;
+    var autoMerged = new Set(), used = new Set(), clusters = [];
+
+    // Pass 1 — silent auto-merge
+    for (var i = 0; i < active.length; i++) {
+      var a = active[i], aId = _dedupEntryId(a);
+      if (autoMerged.has(aId)) continue;
+      for (var j = i + 1; j < active.length; j++) {
+        var b = active[j], bId = _dedupEntryId(b);
+        if (autoMerged.has(bId)) continue;
         if (_dedupIsRejectedPair(aId, bId)) continue;
         if (_dedupLooksLikeSubtask(a.item, b.item)) continue;
-        const det = _dedupDispatchDetect(a.item, b.item);
-        if (det.confidence >= DEDUP_REVIEW_THRESHOLD && det.confidence < DEDUP_AUTO_MERGE_THRESHOLD) {
-          matches.push({ entry: b, confidence: det.confidence, method: det.method });
+        var det = _dedupDispatchDetect(a.item, b.item);
+        if (det.confidence >= DEDUP_AUTO_MERGE_THRESHOLD) {
+          var aM = (!a.item.source_url && !a.item.source_link) || a.item.source_type === "manual";
+          var bM = (!b.item.source_url && !b.item.source_link) || b.item.source_type === "manual";
+          if (!aM && !bM) {
+            try { dedupAutoMerge(a, b); } catch(ex) {}
+            autoMerged.add(aId); autoMerged.add(bId);
+            break;
+          }
+        }
+      }
+    }
+
+    // Pass 2 — review clusters
+    for (var i2 = 0; i2 < active.length; i2++) {
+      var a2 = active[i2], a2Id = _dedupEntryId(a2);
+      if (used.has(a2Id) || autoMerged.has(a2Id)) continue;
+      var matches = [];
+      for (var j2 = i2 + 1; j2 < active.length; j2++) {
+        var b2 = active[j2], b2Id = _dedupEntryId(b2);
+        if (used.has(b2Id) || autoMerged.has(b2Id)) continue;
+        if (_dedupIsRejectedPair(a2Id, b2Id)) continue;
+        if (_dedupLooksLikeSubtask(a2.item, b2.item)) continue;
+        var det2 = _dedupDispatchDetect(a2.item, b2.item);
+        if (det2.confidence >= DEDUP_REVIEW_THRESHOLD && det2.confidence < DEDUP_AUTO_MERGE_THRESHOLD) {
+          matches.push({ entry: b2, confidence: det2.confidence, method: det2.method });
         }
       }
       if (matches.length) {
-        used.add(aId);
-        matches.forEach(m => used.add(_dedupEntryId(m.entry)));
-        // Cluster confidence = highest pairwise confidence among the matches.
-        const conf = matches.reduce((acc, m) => Math.max(acc, m.confidence), 0);
-        const methods = Array.from(new Set(matches.map(m => m.method)));
+        used.add(a2Id);
+        matches.forEach(function(m){ used.add(_dedupEntryId(m.entry)); });
+        var conf2 = matches.reduce(function(acc, m){ return Math.max(acc, m.confidence); }, 0);
+        var methods2 = Array.from(new Set(matches.map(function(m){ return m.method; })));
         clusters.push({
-          entries: [a, ...matches.map(m => m.entry)],
-          confidence: conf,
-          methods: methods
+          entries: [a2].concat(matches.map(function(m){ return m.entry; })),
+          confidence: conf2, methods: methods2
         });
       }
     }
+
+    if (typeof STATE !== "undefined") STATE.dedupClusters = clusters;
     return clusters;
   }
 
   function countPendingDuplicates() {
     try {
-      const clusters = dedupDetectClusters();
-      // Count tasks in pending duplicate groups (informative for badge).
-      return clusters.reduce((acc, c) => acc + c.entries.length, 0);
+      var clusters = (STATE && Array.isArray(STATE.dedupClusters))
+        ? STATE.dedupClusters : dedupDetectClusters();
+      return clusters.length;
     } catch (e) { return 0; }
   }
 
@@ -12905,4 +13044,390 @@
     if (!entries || entries.length < 2) return null;
     const oldest = _dedupOlderEntry(entries);
     const others = entries.filter(e => e !== oldest);
-    const surviving = oldest.ite
+    const surviving = oldest.item;
+    const beforeIds = entries.map(_dedupEntryId);
+
+    // Title
+    surviving.title = _dedupSurvivingTitle(entries, userTitleOverride);
+    if (surviving.text != null) surviving.text = surviving.title;
+
+    // Description (combine, but only overwrite if combining yields more content)
+    const combinedDesc = _dedupCombineDescriptions(entries);
+    if (combinedDesc) surviving.description = combinedDesc;
+
+    // Source links (union, stored on .merged_source_links — preserves original
+    // source_link on the surviving record for back-compat with single-link UI).
+    surviving.merged_source_links = _dedupCombineSourceLinks(entries);
+
+    // Confidence (max)
+    const confs = entries.map(e => (typeof e.item.confidence === "number" ? e.item.confidence : 0));
+    surviving.confidence = confs.reduce((acc, c) => Math.max(acc, c), 0);
+
+    // created_at (earliest)
+    const minCreated = entries.map(e => e.item.created_at).filter(Boolean).sort()[0];
+    if (minCreated) surviving.created_at = minCreated;
+
+    // project_id: keep oldest's; flag if conflict
+    const pids = Array.from(new Set(entries.map(e => _dedupProjectId(e.item)).filter(Boolean)));
+    if (pids.length > 1) surviving.project_id_conflict = pids;
+
+    // Mark provenance on surviving
+    surviving.merged_at = nowIso();
+    surviving.merged_from_count = entries.length;
+
+    // Remove the others
+    others.forEach(_dedupRemoveEntry);
+
+    // Record feedback
+    _dedupRecordFeedback({
+      pair: beforeIds,
+      decision: "merged",
+      merged_id: _dedupEntryId(oldest),
+      original_titles: entries.map(e => _dedupTitleOf(e.item)),
+      confidence: surviving.confidence || null,
+      timestamp: nowIso()
+    });
+
+    return surviving;
+  }
+
+  // -- Reject (suppress pair permanently) ----------------------
+  function dedupRejectCluster(entries) {
+    if (!entries || entries.length < 2) return;
+    const ids = entries.map(_dedupEntryId);
+    // Record all pairwise rejections so any future re-flag is suppressed
+    // for these specific pairs only (either task remains eligible to match
+    // new, unrelated tasks).
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        _dedupRecordFeedback({
+          pair: [ids[i], ids[j]],
+          decision: "rejected",
+          merged_id: null,
+          original_titles: [_dedupTitleOf(entries[i].item), _dedupTitleOf(entries[j].item)],
+          confidence: null,
+          timestamp: nowIso()
+        });
+      }
+    }
+  }
+
+  // -- Public API exposed on window for debugging --------------
+  window.__dedup = {
+    detectClusters: dedupDetectClusters,
+    mergeCluster:   dedupMergeCluster,
+    autoMerge:      dedupAutoMerge,
+    rejectCluster:  dedupRejectCluster,
+    countPending:   countPendingDuplicates,
+    allItems:       _dedupAllItems,
+    threshold:      DEDUP_AUTO_MERGE_THRESHOLD,
+    feedback: function() { return STATE.dedupFeedback || []; }
+  };
+
+  // ============================================================
+  // TSKMGR-79 — Merge confirmation dialog
+  // ============================================================
+  let _dedupActiveCluster = null;
+
+  function dedupOpenMergeDialog(cluster) {
+    _dedupActiveCluster = cluster;
+    const back = document.getElementById("dedup-merge-backdrop");
+    const body = document.getElementById("dedup-merge-body");
+    if (!back || !body) return;
+    body.innerHTML = "";
+    body.append(_dedupBuildMergeDialogBody(cluster));
+    back.classList.add("open");
+  }
+  function dedupCloseMergeDialog() {
+    const back = document.getElementById("dedup-merge-backdrop");
+    if (back) back.classList.remove("open");
+    _dedupActiveCluster = null;
+  }
+  function _dedupBuildMergeDialogBody(cluster) {
+    const wrap = ce("div");
+    // Header
+    wrap.append(ce("div", { class: "td-title-row" }, ce("span", { class: "td-title" }, "Merge duplicate tasks")));
+
+    const oldest = _dedupOlderEntry(cluster.entries);
+    const oldestAgeHrs = _dedupHoursAgo(oldest.item.created_at);
+    const allRecent = cluster.entries.every(e => _dedupHoursAgo(e.item.created_at) <= 24);
+
+    // Originals list (read-only)
+    const origSection = ce("div", { class: "td-section" });
+    origSection.append(ce("div", { class: "td-section-head" }, "Original tasks (" + cluster.entries.length + ")"));
+    cluster.entries.forEach(e => {
+      const row = ce("div", { class: "dedup-orig-row" });
+      const lbl = sourceLabelFor(e.item) || (e.source && e.source.name) || "Source";
+      row.append(ce("span", { class: "dedup-orig-src" }, lbl));
+      row.append(ce("span", { class: "dedup-orig-title" }, _dedupTitleOf(e.item) || "(no title)"));
+      if (e.item.created_at) {
+        const ageHrs = _dedupHoursAgo(e.item.created_at);
+        const ageLabel = ageHrs < 24 ? Math.round(ageHrs) + "h ago" : Math.round(ageHrs / 24) + "d ago";
+        row.append(ce("span", { class: "dedup-orig-age" }, ageLabel));
+      }
+      origSection.append(row);
+    });
+    wrap.append(origSection);
+
+    // Merged title field
+    const titleSection = ce("div", { class: "td-section" });
+    titleSection.append(ce("div", { class: "td-section-head" }, "Merged title"));
+    var titleHint = "";
+    if (!allRecent) {
+      titleHint = "Oldest task is >24h old — its title is preserved by default. Edit below to override.";
+    } else {
+      titleHint = "Both tasks are <24h old — type a merged title, or use the Claude suggestion below.";
+    }
+    titleSection.append(ce("div", { class: "dedup-hint" }, titleHint));
+    var titleInput = ce("input", {
+      type: "text",
+      spellcheck: "true",
+      class: "dedup-title-input",
+      id: "dedup-merge-title-input",
+      value: allRecent ? "" : _dedupSurvivingTitle(cluster.entries, null),
+      placeholder: allRecent ? "Type a merged title…" : ""
+    });
+    titleSection.append(titleInput);
+    wrap.append(titleSection);
+
+    // TSKMGR-84 — Claude title synthesis when both tasks are <24h old
+    if (allRecent) {
+      var titleA = _dedupTitleOf(oldest.item);
+      var otherEntry = cluster.entries.find(function(e) { return e !== oldest; });
+      var titleB = otherEntry ? _dedupTitleOf(otherEntry.item) : "";
+      if (window.cowork && typeof window.cowork.askClaude === "function") {
+        titleInput.placeholder = "Generating suggestion…";
+        window.cowork.askClaude(
+          "Given these two task titles, suggest a single concise merged title (max 10 words) that captures the essence of both:\n\nTitle A: \"" + titleA + "\"\nTitle B: \"" + titleB + "\"",
+          []
+        ).then(function(suggestion) {
+          if (suggestion && typeof suggestion === "string") {
+            titleInput.placeholder = suggestion.trim();
+            var useBtn = ce("button", {
+              class: "btn",
+              style: "margin-top:4px;font-size:11px;padding:3px 8px;",
+              onclick: function() { titleInput.value = suggestion.trim(); }
+            }, "Use suggestion");
+            if (titleInput.parentNode) titleInput.parentNode.insertBefore(useBtn, titleInput.nextSibling);
+          }
+        }).catch(function() { titleInput.placeholder = "Type a merged title…"; });
+      }
+    }
+
+    // Combined description preview
+    const descSection = ce("div", { class: "td-section" });
+    descSection.append(ce("div", { class: "td-section-head" }, "Combined description (preview)"));
+    const combined = _dedupCombineDescriptions(cluster.entries) || "(no descriptions on these tasks)";
+    descSection.append(renderDescriptionMarkdown(combined));
+    wrap.append(descSection);
+
+    // Source links list
+    const links = _dedupCombineSourceLinks(cluster.entries);
+    if (links.length) {
+      const linkSection = ce("div", { class: "td-section" });
+      linkSection.append(ce("div", { class: "td-section-head" }, "Source links preserved"));
+      const ul = ce("ul", { class: "td-attached-list" });
+      links.forEach(l => {
+        const li = ce("li");
+        li.append(ce("a", { href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.title || l.url));
+        ul.append(li);
+      });
+      linkSection.append(ul);
+      wrap.append(linkSection);
+    }
+
+    // Footer buttons
+    const footer = ce("div", { class: "td-footer dedup-footer" });
+    const cancelBtn = ce("button", { class: "btn", onclick: dedupCloseMergeDialog }, "Cancel");
+    const confirmBtn = ce("button", { class: "btn btn-primary", onclick: function () {
+      const inp = document.getElementById("dedup-merge-title-input");
+      const override = inp ? inp.value.trim() : null;
+      dedupMergeCluster(cluster.entries, override || null);
+      dedupCloseMergeDialog();
+      persistState("Merge duplicate cluster (TSKMGR-79)");
+      try { renderRoster(); renderDossier(); } catch (e) {}
+    } }, "Confirm merge");
+    footer.append(cancelBtn);
+    footer.append(confirmBtn);
+    wrap.append(footer);
+
+    return wrap;
+  }
+
+  // ============================================================
+  // TSKMGR-79 — Inject merge-dialog DOM + grouping CSS once
+  // ============================================================
+  (function _dedupInstallDom() {
+    if (document.getElementById("dedup-merge-backdrop")) return;
+    // Backdrop + modal scaffold
+    const back = document.createElement("div");
+    back.id = "dedup-merge-backdrop";
+    back.className = "task-detail-backdrop";
+    back.innerHTML = '<div class="task-detail-modal" id="dedup-merge-modal" tabindex="-1">' +
+      '<button class="td-close" onclick="(function(){var b=document.getElementById(\'dedup-merge-backdrop\');if(b)b.classList.remove(\'open\');})()">×</button>' +
+      '<div id="dedup-merge-body"></div>' +
+      '</div>';
+    document.body.appendChild(back);
+
+    // CSS for grouping + dialog
+    const css = document.createElement("style");
+    css.id = "dedup-css";
+    css.textContent = [
+      ".dedup-group { border: 2px solid #c1392b; border-radius: 8px; padding: 10px 12px 12px; margin: 12px 0; background: rgba(193,57,43,.04); }",
+      ".dedup-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: #c1392b; }",
+      ".dedup-group-head .dedup-conf { color: var(--muted); font-weight: 600; letter-spacing: 0; text-transform: none; font-size: 11px; }",
+      ".dedup-group-actions { display: flex; gap: 6px; margin-top: 8px; }",
+      ".dedup-group-actions .btn { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }",
+      ".dedup-group-actions .btn:hover { background: rgba(0,0,0,.04); }",
+      ".dedup-group-actions .btn.btn-primary { background: #c1392b; color: #fff; border-color: #c1392b; }",
+      ".dedup-group-actions .btn.btn-primary:hover { background: #a02e22; }",
+      ".dedup-orig-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }",
+      ".dedup-orig-row:last-child { border-bottom: 0; }",
+      ".dedup-orig-src { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 56px; }",
+      ".dedup-orig-title { flex: 1; }",
+      ".dedup-orig-age { font-size: 11px; color: var(--muted); }",
+      ".dedup-hint { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-style: italic; }",
+      ".dedup-title-input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); font-size: 14px; }",
+      ".dedup-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }",
+      ".mytasks-tab .tab-badge.dedup { background: #c1392b; }"
+    ].join("\n");
+    document.head.appendChild(css);
+  })();
+
+  // ============================================================
+  // end TSKMGR-79 — DEDUPLICATION ENGINE
+  // ============================================================
+})();
+</script>
+
+
+<script>
+(function() {
+  // TSKMGR-91 — Custom spellcheck suggestion menu for Electron/Cowork
+  // Uses Datamuse API for suggestions; works around Electron's missing
+  // native context-menu spell suggestions in iframes.
+  let spellMenu = null;
+
+  function removeSpellMenu() {
+    if (spellMenu) { spellMenu.remove(); spellMenu = null; }
+  }
+
+  function getWordAtCaret(el) {
+    const val = el.value;
+    let pos = el.selectionStart;
+    if (pos === null) return null;
+    let start = pos;
+    while (start > 0 && /\w/.test(val[start - 1])) start--;
+    let end = pos;
+    while (end < val.length && /\w/.test(val[end])) end++;
+    if (start === end) return null;
+    return { word: val.slice(start, end), start, end };
+  }
+
+  async function getSuggestions(word) {
+    try {
+      const res = await fetch(
+        'https://api.datamuse.com/words?sp=' + encodeURIComponent(word) + '&max=6'
+      );
+      const data = await res.json();
+      return data
+        .map(function(d) { return d.word; })
+        .filter(function(w) { return w.toLowerCase() !== word.toLowerCase(); })
+        .slice(0, 5);
+    } catch (e) { return []; }
+  }
+
+  function showSpellMenu(x, y, suggestions, el, wordInfo) {
+    removeSpellMenu();
+    if (!suggestions.length) return;
+
+    spellMenu = document.createElement('div');
+    spellMenu.style.cssText = [
+      'position:fixed',
+      'z-index:99999',
+      'left:' + x + 'px',
+      'top:' + y + 'px',
+      'background:var(--bg)',
+      'border:1px solid var(--line)',
+      'border-radius:6px',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35)',
+      'padding:4px 0',
+      'min-width:160px',
+      'font-family:inherit',
+      'font-size:13px'
+    ].join(';');
+
+    var hdr = document.createElement('div');
+    hdr.textContent = 'Spelling suggestions';
+    hdr.style.cssText = [
+      'padding:4px 12px',
+      'color:var(--muted)',
+      'font-size:11px',
+      'border-bottom:1px solid var(--line)',
+      'margin-bottom:4px'
+    ].join(';');
+    spellMenu.appendChild(hdr);
+
+    suggestions.forEach(function(s) {
+      var item = document.createElement('div');
+      item.textContent = s;
+      item.style.cssText = [
+        'padding:6px 12px',
+        'cursor:pointer',
+        'color:var(--fg)',
+        'border-radius:4px',
+        'margin:0 4px'
+      ].join(';');
+      item.addEventListener('mouseenter', function() {
+        item.style.background = 'var(--tint-medium)';
+      });
+      item.addEventListener('mouseleave', function() {
+        item.style.background = '';
+      });
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var val = el.value;
+        el.value = val.slice(0, wordInfo.start) + s + val.slice(wordInfo.end);
+        el.selectionStart = el.selectionEnd = wordInfo.start + s.length;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        removeSpellMenu();
+      });
+      spellMenu.appendChild(item);
+    });
+
+    document.body.appendChild(spellMenu);
+
+    // Nudge on-screen if the menu overflows the viewport
+    var rect = spellMenu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      spellMenu.style.left = (x - rect.width) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      spellMenu.style.top = (y - rect.height) + 'px';
+    }
+  }
+
+  document.addEventListener('contextmenu', async function(e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    if (el.getAttribute('spellcheck') !== 'true') return;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+
+    e.preventDefault();
+    removeSpellMenu();
+
+    var wordInfo = getWordAtCaret(el);
+    if (!wordInfo) return;
+
+    var suggestions = await getSuggestions(wordInfo.word);
+    showSpellMenu(e.clientX, e.clientY, suggestions, el, wordInfo);
+  }, true);
+
+  document.addEventListener('click', removeSpellMenu, true);
+  document.addEventListener('keydown', removeSpellMenu, true);
+  document.addEventListener('scroll', removeSpellMenu, true);
+})();
+</script>
+
+</body>
+</html>
