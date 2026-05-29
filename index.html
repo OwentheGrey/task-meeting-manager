@@ -1786,11 +1786,11 @@
       <option value="action-project">Action item (project)</option>
       <option value="thread">Topic thread</option>
     </select></div>
-    <div class="qc-row"><label>Text</label><textarea id="qc-text" placeholder="Type the agenda item, commitment, or thread title…"></textarea></div>
+    <div class="qc-row"><label>Text</label><textarea id="qc-text" spellcheck="true" placeholder="Type the agenda item, commitment, or thread title…"></textarea></div>
     <div class="qc-row" id="qc-project-row"><label>Project</label><select id="qc-project"></select></div>
     <div class="qc-row"><label>Tags</label><input type="text" id="qc-tags" placeholder="Comma-separated, e.g. UAT, T3FY26 — required if no project picked"></div>
-    <div class="qc-row"><label>Detail</label><textarea id="qc-detail" placeholder="Optional. For agenda items + threads."></textarea></div>
-    <div class="qc-row"><label>Context</label><textarea id="qc-context" placeholder="Where did this come from? e.g. 'Brad mentioned this on our 1:1 — wants my read by Friday' or 'Saw on the SCRC Slack thread.' Helps you remember the source later."></textarea></div>
+    <div class="qc-row"><label>Detail</label><textarea id="qc-detail" spellcheck="true" placeholder="Optional. For agenda items + threads."></textarea></div>
+    <div class="qc-row"><label>Context</label><textarea id="qc-context" spellcheck="true" placeholder="Where did this come from? e.g. 'Brad mentioned this on our 1:1 — wants my read by Friday' or 'Saw on the SCRC Slack thread.' Helps you remember the source later."></textarea></div>
     <div id="qc-error" style="color:var(--bad);font-size:12px;display:none;margin-top:6px"></div>
     <div class="footer">
       <button class="btn" id="qc-cancel">Cancel</button>
@@ -2058,6 +2058,35 @@
     return el;
   };
   const initials = (n) => (n || "?").split(/\s+/).map(s => s[0]).slice(0, 2).join("").toUpperCase() || "?";
+  // TSKMGR-88 — return display label for a project, prefixed with emoji if set.
+  function projectLabel(p, useShortCode) {
+    const emoji = p.emoji ? p.emoji + " " : "";
+    if (useShortCode) return emoji + (p.shortCode || p.name || p.id || "").toUpperCase();
+    return emoji + (p.name || p.id || "");
+  }
+  // TSKMGR-88 — derive a display shortcode for a partner; respects stored shortCode if set.
+  // Returns 2-char code (first initial + last initial), or 3-char if collision with earlier partner.
+  function derivePartnerShortCode(partners, partner) {
+    if (partner.shortCode) return partner.shortCode.toUpperCase().slice(0, 3);
+    const parts = (partner.name || "").trim().split(/\s+/);
+    const first = parts[0] || "";
+    const last = parts[parts.length - 1] || "";
+    const twoChar = (first[0] || "").toUpperCase() + (parts.length > 1 ? (last[0] || "").toUpperCase() : (first[1] || "").toUpperCase());
+    // Check if any earlier partner (lower index = longer tenure) uses the same 2-char code
+    const myIndex = partners.indexOf(partner);
+    const collision = partners.some((p, i) => i < myIndex && !p.shortCode && (() => {
+      const pp = (p.name || "").trim().split(/\s+/);
+      const pf = pp[0] || "";
+      const pl = pp[pp.length - 1] || "";
+      const pc = (pf[0] || "").toUpperCase() + (pp.length > 1 ? (pl[0] || "").toUpperCase() : (pf[1] || "").toUpperCase());
+      return pc === twoChar;
+    })());
+    if (collision) {
+      // 3-char: first initial + first 2 chars of last name
+      return ((first[0] || "").toUpperCase() + (last.slice(0, 2) || first.slice(1, 3) || "").toLowerCase()).toUpperCase().slice(0, 3);
+    }
+    return twoChar || initials(partner.name);
+  }
   const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
   const fmtDT = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
   const daysAgo = (iso) => { if (!iso) return null; const d = (Date.now() - new Date(iso).getTime()) / 86400000; if (d < 1) return "today"; if (d < 2) return "1d ago"; return Math.floor(d) + "d ago"; };
@@ -3741,7 +3770,7 @@
     projects.forEach(function (p) {
       var o = document.createElement("option");
       o.value = p.id;
-      o.textContent = (p.shortCode || p.name || p.id).toUpperCase();
+      o.textContent = projectLabel(p, true);
       if (current === p.id) o.selected = true;
       sel.append(o);
     });
@@ -3834,6 +3863,7 @@
       const inp = document.createElement(useTextarea ? "textarea" : "input");
       if (!useTextarea) inp.type = inputType;
       inp.className = "edit-input size-" + sizeClass;
+      if (useTextarea || inputType === "text") inp.spellcheck = true;
       inp.value = getter() != null ? String(getter()) : (inputType === "date" ? new Date().toISOString().slice(0, 10) : "");
       span.replaceWith(inp);
       inp.focus();
@@ -7123,16 +7153,17 @@
     const box = ce("div", { class: "profile" });
     const grid = ce("div", { class: "profile-grid" });
     const fields = [
-      { key: "name", label: "Name", tag: "input", type: "text" },
+      { key: "name", label: "Name", tag: "input", type: "text", spellcheck: true },
       { key: "email", label: "Email", tag: "input", type: "email", help: "Used to find your 1:1s — must match the email on the calendar invite." },
       { key: "slackUserId", label: "Slack User ID", tag: "input", type: "text", help: "Optional. e.g. U04V5NAJG15." },
-      { key: "role", label: "Role / title", tag: "input", type: "text" },
-      { key: "cadence", label: "Cadence", tag: "input", type: "text", help: "Free-form note. The actual next meeting is detected from your calendar." },
-      { key: "notes", label: "Notes", tag: "textarea" }
+      { key: "role", label: "Role / title", tag: "input", type: "text", spellcheck: true },
+      { key: "cadence", label: "Cadence", tag: "input", type: "text", spellcheck: true, help: "Free-form note. The actual next meeting is detected from your calendar." },
+      { key: "notes", label: "Notes", tag: "textarea", spellcheck: true }
     ];
     fields.forEach(f => {
       grid.append(ce("label", {}, f.label));
       const inp = ce(f.tag, { type: f.type || undefined });
+      if (f.spellcheck) inp.spellcheck = true;
       inp.value = p[f.key] || "";
       inp.addEventListener("input", () => { p[f.key] = inp.value; });
       inp.addEventListener("blur", () => persistState(`Edit profile.${f.key}`));
@@ -7505,7 +7536,7 @@
     const head = ce("div", { class: "pheader" }, [
       ce("div", {}, [
         ce("h1", {}, [
-          p.name || "(unnamed project)",
+          projectLabel(p, false) || "(unnamed project)",
           ce("span", { class: "role" }, [
             ce("span", { class: "project-status status-" + (p.status || "active") }, p.status || "active")
           ]),
@@ -7659,9 +7690,10 @@
     sec.append(ce("h3", {}, ["Project profile", ce("span", { class: "pill synth" }, "editable")]));
     const grid = ce("div", { class: "profile-grid" });
     const fields = [
-      { key: "name", label: "Name", tag: "input", type: "text" },
+      { key: "name", label: "Name", tag: "input", type: "text", spellcheck: true },
       { key: "shortCode", label: "Short code", tag: "input", type: "text", maxlength: 2, help: "Optional 2-character label shown in the avatar circle when sidebar is collapsed (e.g. 'CN' for Connections). Falls back to name initials if blank." },
-      { key: "description", label: "Description", tag: "textarea", help: "What is this project, what's the goal, what phase is it in. Feeds owner-shape committees' 'what to ask the team' prompt." },
+      { key: "emoji", label: "Emoji", tag: "input", type: "text", maxlength: 2, help: "Optional emoji shown before the project name in chips and labels (e.g. 🔗)." },
+      { key: "description", label: "Description", tag: "textarea", spellcheck: true, help: "What is this project, what's the goal, what phase is it in. Feeds owner-shape committees' 'what to ask the team' prompt." },
       { key: "tagAlias", label: "Tag alias", tag: "input", type: "text", help: "Tag string this project subsumes. Items with this tag are aggregated under the project automatically. e.g., 'Connections-V1.0'." },
       { key: "startDate", label: "Start date", tag: "input", type: "date" },
       { key: "endDate", label: "End date", tag: "input", type: "date", help: "Leave blank for ongoing." }
@@ -7670,6 +7702,7 @@
       grid.append(ce("label", {}, f.label));
       const inp = ce(f.tag, { type: f.type || undefined });
       if (f.maxlength) inp.maxLength = f.maxlength;
+      if (f.spellcheck) inp.spellcheck = true;
       inp.value = p[f.key] || "";
       inp.addEventListener("input", () => {
         let v = inp.value;
@@ -10226,17 +10259,18 @@
     sec.append(ce("h3", {}, ["Committee profile", ce("span", { class: "pill synth" }, "editable")]));
     const grid = ce("div", { class: "profile-grid" });
     const fields = [
-      { key: "name", label: "Name", tag: "input", type: "text" },
+      { key: "name", label: "Name", tag: "input", type: "text", spellcheck: true },
       { key: "shortCode", label: "Short code", tag: "input", type: "text", maxlength: 2, help: "Optional 2-character label shown in the avatar circle when sidebar is collapsed (e.g. 'CR' for Connections Requirements). Falls back to name initials if blank." },
-      { key: "purpose", label: "Purpose", tag: "textarea", help: "Why this meeting exists. Feeds the 'what to ask the team' prompt." },
-      { key: "cadence", label: "Cadence", tag: "input", type: "text" },
+      { key: "purpose", label: "Purpose", tag: "textarea", spellcheck: true, help: "Why this meeting exists. Feeds the 'what to ask the team' prompt." },
+      { key: "cadence", label: "Cadence", tag: "input", type: "text", spellcheck: true },
       { key: "manualNotesUrl", label: "Manual notes URL", tag: "input", type: "url", help: "Optional. Paste a Google Doc URL where this committee tracks notes manually (in addition to or instead of Gemini Notes). The scheduled task will read both when reconciling." },
-      { key: "notes", label: "Notes", tag: "textarea" }
+      { key: "notes", label: "Notes", tag: "textarea", spellcheck: true }
     ];
     fields.forEach(f => {
       grid.append(ce("label", {}, f.label));
       const inp = ce(f.tag, { type: f.type || undefined });
       if (f.maxlength) inp.maxLength = f.maxlength;
+      if (f.spellcheck) inp.spellcheck = true;
       inp.value = c[f.key] || "";
       inp.addEventListener("input", () => {
         let v = inp.value;
@@ -10268,7 +10302,7 @@
     if (!c.members) c.members = [];
     c.members.forEach((m, idx) => {
       const row = ce("div", { class: "member-row" });
-      const nameInp = ce("input", { type: "text", placeholder: "Name", value: m.name || "" });
+      const nameInp = ce("input", { type: "text", spellcheck: "true", placeholder: "Name", value: m.name || "" });
       nameInp.addEventListener("input", () => m.name = nameInp.value);
       nameInp.addEventListener("blur", () => persistState("Edit member name"));
       const emailInp = ce("input", { type: "email", placeholder: "email@org", value: m.email || "" });
@@ -10301,7 +10335,7 @@
           ce("span", {
             style: "cursor:pointer",
             onclick: () => { STATE.selectedProjectId = p.id; STATE.selectedKind = "project"; STATE.selectedView = "project"; renderRoster(); renderDossier(); }
-          }, p.name),
+          }, projectLabel(p, false)),
           ce("button", { class: "chip-x", title: "Remove project link", onclick: () => {
             // TSKMGR-61 — bidirectional unlink keeps project.committeeIds in sync.
             unlinkCommitteeFromProject(c.id, p.id, "Edit committee.projectIds");
@@ -10343,7 +10377,7 @@
         const roleSel = ce("select", {});
         [["owner","Owner"],["contributor","Contributor"],["optional","Optional"]].forEach(([v, lbl]) => { const o = ce("option", { value: v }, lbl); if ((ovr.role || c.role) === v) o.selected = true; roleSel.append(o); });
         roleSel.addEventListener("change", () => { ovr.role = roleSel.value; persistState("Edit role override"); renderDossier(); });
-        const reasonInp = ce("input", { type: "text", placeholder: "Reason (optional, e.g. 'delegated to Patricia')", value: ovr.reason || "" });
+        const reasonInp = ce("input", { type: "text", spellcheck: "true", placeholder: "Reason (optional, e.g. 'delegated to Patricia')", value: ovr.reason || "" });
         reasonInp.addEventListener("input", () => { ovr.reason = reasonInp.value; });
         reasonInp.addEventListener("blur", () => persistState("Edit role override reason"));
         const del = ce("button", { class: "btn tiny danger", onclick: () => { c.roleOverrides.splice(idx, 1); persistState("Remove role override"); renderDossier(); } }, "×");
@@ -10570,7 +10604,7 @@
 
     // Manual add row
     const addRow = ce("div", { style: "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center" });
-    const nameAddInp = ce("input", { type: "text", placeholder: "Display name", style: "flex:1;min-width:120px" });
+    const nameAddInp = ce("input", { type: "text", spellcheck: "true", placeholder: "Display name", style: "flex:1;min-width:120px" });
     const emailAddInp = ce("input", { type: "email", placeholder: "email@org (optional)", style: "flex:1;min-width:160px" });
     const addBtn = ce("button", { class: "btn tiny", onclick: () => {
       const nm = nameAddInp.value.trim();
@@ -10986,7 +11020,7 @@
         const panel = ce("div", { class: "discovery-expand" });
         // Name (pre-filled from event summary)
         panel.append(ce("label", {}, "Name"));
-        const nameInp = ce("input", { type: "text", value: samp.summary || "" });
+        const nameInp = ce("input", { type: "text", spellcheck: "true", value: samp.summary || "" });
         panel.append(nameInp);
         // Role
         panel.append(ce("label", {}, "Your role on this committee"));
@@ -10999,7 +11033,7 @@
         panel.append(roleSel);
         // Purpose
         panel.append(ce("label", {}, "Purpose (optional)"));
-        const purposeInp = ce("textarea", { placeholder: "Why this meeting exists — feeds the 'what to ask the team' prompt." });
+        const purposeInp = ce("textarea", { spellcheck: "true", placeholder: "Why this meeting exists — feeds the 'what to ask the team' prompt." });
         panel.append(purposeInp);
         // v3.4.1a — Project assignment (with auto-suggestion based on title + attendees)
         panel.append(ce("label", {}, "Linked project (optional)"));
@@ -11171,7 +11205,7 @@
         const unconfigured = !p.email || !p.name;
         const isActive = p.id === STATE.selectedPartnerId && STATE.selectedKind === "partner" && (STATE.selectedView || "partner") === "partner";
         const row = ce("div", { title: (p.name || "(unnamed)") + " · " + relshipShort(p.relationshipType), class: "partner-row" + (isActive ? " active" : "") + (unconfigured ? " unconfigured" : ""), onclick: () => { STATE.selectedPartnerId = p.id; STATE.selectedKind = "partner"; STATE.selectedView = "partner"; renderRoster(); renderDossier(); persistState("Switch partner"); } }, [
-          ce("div", { class: "avatar" }, initials(p.name)),
+          ce("div", { class: "avatar" }, derivePartnerShortCode(STATE.partners, p)),
           ce("div", { class: "partner-meta" }, [
             ce("div", { class: "nm" }, p.name || "(unnamed)"),
             ce("div", { class: "sub" }, [
@@ -11263,7 +11297,7 @@
         } }, [
           ce("div", { class: "avatar" }, pr.shortCode ? pr.shortCode.toUpperCase().slice(0, 2) : initials(pr.name)),
           ce("div", { class: "partner-meta" }, [
-            ce("div", { class: "nm" }, pr.name || "(unnamed)"),
+            ce("div", { class: "nm" }, projectLabel(pr, false)),
             ce("div", { class: "sub" }, [
               ce("span", { class: "project-status status-" + (pr.status || "active") }, pr.status || "active")
             ])
@@ -11808,8 +11842,8 @@
   // Seed config — re-checked each load so additive fields (e.g. shortCode added in v3.4.1b.1)
   // patch onto previously-seeded projects without re-running the full seed.
   const PROJECT_SEED = [
-    { id: "connections", name: "Connections", shortCode: "CN", description: "Connections platform — discipleship tracking, donor system migration, related projects.", tagAlias: "Connections", committeePatterns: [/discipleship\s*tracker/i] },
-    { id: "scrc-salesforce", name: "SCRC Salesforce", shortCode: "SF", description: "Salesforce / SCRC migration work — EMS sync, SCRC check-ins.", tagAlias: "SCRC", committeePatterns: [/salesforce\s*scrc/i, /\bscrc\b/i, /ems.*salesforce/i, /salesforce.*ems/i] }
+    { id: "connections", name: "Connections", shortCode: "CN", emoji: "🔗", description: "Connections platform — discipleship tracking, donor system migration, related projects.", tagAlias: "Connections", committeePatterns: [/discipleship\s*tracker/i] },
+    { id: "scrc-salesforce", name: "SCRC Salesforce", shortCode: "SF", emoji: "⚡", description: "Salesforce / SCRC migration work — EMS sync, SCRC check-ins.", tagAlias: "SCRC", committeePatterns: [/salesforce\s*scrc/i, /\bscrc\b/i, /ems.*salesforce/i, /salesforce.*ems/i] }
   ];
   let seededAny = false;
   if (!STATE.seedFlags.v341a) {
@@ -11818,7 +11852,7 @@
       if (!proj) {
         STATE.projects = STATE.projects || [];
         // TSKMGR-61 — normalize seeded projects so they pick up the full canonical shape (committeeIds, slackChannelId, etc.).
-        proj = normalizeProject({ id: seed.id, name: seed.name, shortCode: seed.shortCode, description: seed.description, status: "active", tagAlias: seed.tagAlias });
+        proj = normalizeProject({ id: seed.id, name: seed.name, shortCode: seed.shortCode, emoji: seed.emoji || "", description: seed.description, status: "active", tagAlias: seed.tagAlias });
         STATE.projects.push(proj);
         seededAny = true;
       }
@@ -11847,6 +11881,27 @@
       if (proj && !proj.shortCode) { proj.shortCode = seed.shortCode; seededAny = true; }
     });
     STATE.seedFlags.v341b1 = true;
+  }
+  // TSKMGR-88 — backfill emoji onto already-seeded projects if blank
+  if (!STATE.seedFlags.v388emoji) {
+    PROJECT_SEED.forEach(seed => {
+      const proj = (STATE.projects || []).find(p => p.id === seed.id);
+      if (proj && !proj.emoji && seed.emoji) { proj.emoji = seed.emoji; seededAny = true; }
+    });
+    STATE.seedFlags.v388emoji = true;
+  }
+  // TSKMGR-88 — fix DT/DTG committee shortCode collision
+  if (!STATE.seedFlags.v388dtg) {
+    (STATE.committees || []).forEach(c => {
+      if (!c.name) return;
+      if (/discipleship\s*tracker\s*(session|\s*$)/i.test(c.name) && !c.name.match(/grooming|requirements/i)) {
+        if (!c.shortCode || c.shortCode === "DT") { c.shortCode = "DT"; seededAny = true; }
+      }
+      if (/grooming|requirements/i.test(c.name) && /discipleship/i.test(c.name)) {
+        if (!c.shortCode || c.shortCode === "DT") { c.shortCode = "DTG"; seededAny = true; }
+      }
+    });
+    STATE.seedFlags.v388dtg = true;
   }
   if (seededAny) { try { persistState("Seed projects + shortCodes"); } catch (e) {} }
 
@@ -12682,6 +12737,7 @@
     titleSection.append(ce("div", { class: "dedup-hint" }, titleHint));
     const titleInput = ce("input", {
       type: "text",
+      spellcheck: "true",
       class: "dedup-title-input",
       id: "dedup-merge-title-input",
       value: _dedupSurvivingTitle(cluster.entries, null)
