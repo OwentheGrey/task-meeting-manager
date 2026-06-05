@@ -8,6 +8,7 @@
     "mcp__1bf97388-dfb1-43d1-84eb-68ad6116208d__update_event",
     "mcp__3e9e43fa-6d3f-47ba-973a-a36587b88e7e__search_threads",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_public_and_private",
+    "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_user_profile",
     "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_search",
     "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_get_sprints_from_board",
     "mcp__basecamp__get_todolists",
@@ -20,6 +21,7 @@
     "Google Calendar",
     "Google Calendar",
     "Gmail",
+    "Slack",
     "Slack",
     "Jira POC",
     "Jira POC",
@@ -575,6 +577,20 @@
   /* v3.3.0b — archived project rows dimmed in sidebar */
   .partner-row.archived { opacity: .55; }
   .partner-row.archived:hover { opacity: 1; }
+
+  /* TSKMGR-94 — Slack profile photo avatars */
+  .partner-avatar-photo {
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    flex-shrink: 0;
+  }
+  .partner-avatar-loading {
+    background: linear-gradient(90deg, var(--line) 25%, var(--bg-card, var(--bg)) 50%, var(--line) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
   /* v3.3.1 — Friday planning + tag promotion */
   .friday-filter { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 10px 0 14px; padding: 8px 10px; background: rgba(0,0,0,.025); border-radius: 4px; }
@@ -2165,6 +2181,75 @@
     return el;
   };
   const initials = (n) => (n || "?").split(/\s+/).map(s => s[0]).slice(0, 2).join("").toUpperCase() || "?";
+
+  // TSKMGR-94 — Slack avatar cache helpers
+  function _slackAvatarCache() {
+    try { return JSON.parse(localStorage.getItem("tmm.v3.slackAvatars") || "{}"); } catch (e) { return {}; }
+  }
+  function _slackAvatarSet(slackUserId, url) {
+    const cache = _slackAvatarCache();
+    cache[slackUserId] = url;
+    localStorage.setItem("tmm.v3.slackAvatars", JSON.stringify(cache));
+  }
+
+  // TSKMGR-94 — Fetch Slack avatar for a partner if not already cached.
+  // Returns a Promise that resolves to the avatar URL or null.
+  async function fetchSlackAvatarIfNeeded(partner) {
+    if (!partner.slackUserId) return null;
+    const cache = _slackAvatarCache();
+    if (cache[partner.slackUserId]) return cache[partner.slackUserId];
+    try {
+      const raw = await window.cowork.callMcpTool("mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_user_profile", {
+        user_id: partner.slackUserId
+      });
+      const profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const url = (profile && profile.profile && (profile.profile.image_192 || profile.profile.image_72 || profile.profile.image_48)) || null;
+      if (url) _slackAvatarSet(partner.slackUserId, url);
+      return url;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // TSKMGR-94 — Build an avatar DOM element for a partner.
+  // Returns an <img> if a cached photo URL exists, otherwise the initials bubble.
+  // Fires an async fetch to update the element if no cache entry yet.
+  function makePartnerAvatar(partner, sizePx) {
+    const cache = _slackAvatarCache();
+    const cachedUrl = partner.slackUserId ? cache[partner.slackUserId] : null;
+    if (cachedUrl) {
+      const img = document.createElement("img");
+      img.className = "partner-avatar-photo";
+      img.src = cachedUrl;
+      img.style.width = sizePx + "px";
+      img.style.height = sizePx + "px";
+      img.alt = partner.name || "";
+      return img;
+    }
+    // Return initials bubble (matching .avatar style)
+    const el = document.createElement("div");
+    el.className = "avatar";
+    if (sizePx !== 26) { el.style.width = sizePx + "px"; el.style.height = sizePx + "px"; el.style.fontSize = Math.max(10, Math.round(sizePx * 0.42)) + "px"; }
+    el.textContent = derivePartnerShortCode(STATE.partners, partner);
+    // Fire async fetch — update element if we get a URL back
+    if (partner.slackUserId) {
+      el.classList.add("partner-avatar-loading");
+      fetchSlackAvatarIfNeeded(partner).then(function(url) {
+        if (!url) { el.classList.remove("partner-avatar-loading"); return; }
+        // Convert bubble to photo
+        el.classList.remove("partner-avatar-loading");
+        const img = document.createElement("img");
+        img.className = "partner-avatar-photo";
+        img.src = url;
+        img.style.width = sizePx + "px";
+        img.style.height = sizePx + "px";
+        img.alt = partner.name || "";
+        if (el.parentNode) el.parentNode.replaceChild(img, el);
+      });
+    }
+    return el;
+  }
+
   // TSKMGR-88 — return display label for a project, prefixed with emoji if set.
   function projectLabel(p, useShortCode) {
     const emoji = p.emoji ? p.emoji + " " : "";
@@ -2572,6 +2657,7 @@
     "mcp__1bf97388-dfb1-43d1-84eb-68ad6116208d__create_event",
     "mcp__3e9e43fa-6d3f-47ba-973a-a36587b88e7e__search_threads",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_public_and_private",
+    "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_user_profile",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_channel",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_channels",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_users",
@@ -2581,7 +2667,7 @@
   ];
   var _CANONICAL_SERVERNAMES = [
     "cowork", "Google Calendar", "Google Calendar", "Google Calendar",
-    "Google Calendar", "Gmail", "Slack", "Slack", "Slack", "Slack",
+    "Google Calendar", "Gmail", "Slack", "Slack", "Slack", "Slack", "Slack",
     "Jira POC", "Jira POC", "Slack"
   ];
   (function _patchMetadataIfStale() {
@@ -12051,7 +12137,7 @@
         const unconfigured = !p.email || !p.name;
         const isActive = p.id === STATE.selectedPartnerId && STATE.selectedKind === "partner" && (STATE.selectedView || "partner") === "partner";
         const row = ce("div", { title: (p.name || "(unnamed)") + " · " + relshipShort(p.relationshipType), class: "partner-row" + (isActive ? " active" : "") + (unconfigured ? " unconfigured" : ""), onclick: () => { STATE.selectedPartnerId = p.id; STATE.selectedKind = "partner"; STATE.selectedView = "partner"; renderRoster(); renderDossier(); persistState("Switch partner"); } }, [
-          ce("div", { class: "avatar" }, derivePartnerShortCode(STATE.partners, p)),
+          makePartnerAvatar(p, 26),
           ce("div", { class: "partner-meta" }, [
             ce("div", { class: "nm" }, p.name || "(unnamed)"),
             ce("div", { class: "sub" }, [
@@ -12602,7 +12688,7 @@
         renderDossier();
       }
     }, "↻");
-    const head = ce("div", { class: "pheader" }, [ce("div", {}, [ce("h1", {}, [p.name || "(unnamed)", ce("span", { class: "role" }, p.role || ""), partnerRefreshBtn]), ce("div", { class: "cadence" }, p.cadence || "")])]);
+    const head = ce("div", { class: "pheader", style: "align-items:flex-start" }, [makePartnerAvatar(p, 48), ce("div", { style: "flex:1;min-width:0" }, [ce("h1", {}, [p.name || "(unnamed)", ce("span", { class: "role" }, p.role || ""), partnerRefreshBtn]), ce("div", { class: "cadence" }, p.cadence || "")])]);
     dos.append(head);
 
     const balance = renderBalanceRibbon(p); if (balance) dos.append(balance);
@@ -14003,122 +14089,4 @@
     if (spellMenu) { spellMenu.remove(); spellMenu = null; }
   }
 
-  function getWordAtCaret(el) {
-    const val = el.value;
-    let pos = el.selectionStart;
-    if (pos === null) return null;
-    let start = pos;
-    while (start > 0 && /\w/.test(val[start - 1])) start--;
-    let end = pos;
-    while (end < val.length && /\w/.test(val[end])) end++;
-    if (start === end) return null;
-    return { word: val.slice(start, end), start, end };
-  }
-
-  async function getSuggestions(word) {
-    try {
-      const res = await fetch(
-        'https://api.datamuse.com/words?sp=' + encodeURIComponent(word) + '&max=6'
-      );
-      const data = await res.json();
-      return data
-        .map(function(d) { return d.word; })
-        .filter(function(w) { return w.toLowerCase() !== word.toLowerCase(); })
-        .slice(0, 5);
-    } catch (e) { return []; }
-  }
-
-  function showSpellMenu(x, y, suggestions, el, wordInfo) {
-    removeSpellMenu();
-    if (!suggestions.length) return;
-
-    spellMenu = document.createElement('div');
-    spellMenu.style.cssText = [
-      'position:fixed',
-      'z-index:99999',
-      'left:' + x + 'px',
-      'top:' + y + 'px',
-      'background:var(--bg)',
-      'border:1px solid var(--line)',
-      'border-radius:6px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35)',
-      'padding:4px 0',
-      'min-width:160px',
-      'font-family:inherit',
-      'font-size:13px'
-    ].join(';');
-
-    var hdr = document.createElement('div');
-    hdr.textContent = 'Spelling suggestions';
-    hdr.style.cssText = [
-      'padding:4px 12px',
-      'color:var(--muted)',
-      'font-size:11px',
-      'border-bottom:1px solid var(--line)',
-      'margin-bottom:4px'
-    ].join(';');
-    spellMenu.appendChild(hdr);
-
-    suggestions.forEach(function(s) {
-      var item = document.createElement('div');
-      item.textContent = s;
-      item.style.cssText = [
-        'padding:6px 12px',
-        'cursor:pointer',
-        'color:var(--fg)',
-        'border-radius:4px',
-        'margin:0 4px'
-      ].join(';');
-      item.addEventListener('mouseenter', function() {
-        item.style.background = 'var(--tint-medium)';
-      });
-      item.addEventListener('mouseleave', function() {
-        item.style.background = '';
-      });
-      item.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        var val = el.value;
-        el.value = val.slice(0, wordInfo.start) + s + val.slice(wordInfo.end);
-        el.selectionStart = el.selectionEnd = wordInfo.start + s.length;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        removeSpellMenu();
-      });
-      spellMenu.appendChild(item);
-    });
-
-    document.body.appendChild(spellMenu);
-
-    // Nudge on-screen if the menu overflows the viewport
-    var rect = spellMenu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-      spellMenu.style.left = (x - rect.width) + 'px';
-    }
-    if (rect.bottom > window.innerHeight) {
-      spellMenu.style.top = (y - rect.height) + 'px';
-    }
-  }
-
-  document.addEventListener('contextmenu', async function(e) {
-    var el = e.target;
-    if (!el || !el.getAttribute) return;
-    if (el.getAttribute('spellcheck') !== 'true') return;
-    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
-
-    e.preventDefault();
-    removeSpellMenu();
-
-    var wordInfo = getWordAtCaret(el);
-    if (!wordInfo) return;
-
-    var suggestions = await getSuggestions(wordInfo.word);
-    showSpellMenu(e.clientX, e.clientY, suggestions, el, wordInfo);
-  }, true);
-
-  document.addEventListener('click', removeSpellMenu, true);
-  document.addEventListener('keydown', removeSpellMenu, true);
-  document.addEventListener('scroll', removeSpellMenu, true);
-})();
-</script>
-
-</body>
-</html>
+  function 
