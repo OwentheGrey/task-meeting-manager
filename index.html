@@ -9,7 +9,11 @@
     "mcp__3e9e43fa-6d3f-47ba-973a-a36587b88e7e__search_threads",
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_public_and_private",
     "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_search",
-    "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_get_sprints_from_board"
+    "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_get_sprints_from_board",
+    "mcp__basecamp__get_todolists",
+    "mcp__basecamp__get_todos",
+    "mcp__basecamp__search_basecamp",
+    "mcp__basecamp__get_campfire_lines"
   ],
   "mcpServerNames": [
     "cowork",
@@ -18,7 +22,11 @@
     "Gmail",
     "Slack",
     "Jira POC",
-    "Jira POC"
+    "Jira POC",
+    "Basecamp",
+    "Basecamp",
+    "Basecamp",
+    "Basecamp"
   ],
   "description": "Personal task/meeting manager with email triage, calendar prep, Jira integration. Restored from GitHub copy (OwentheGrey/task-meeting-manager, main branch) after the artifact manifest entry pointed to a missing folder."
 }
@@ -620,6 +628,25 @@
   @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
   /* TSKMGR-47 — Jira UAT owner highlight */
   .email-card.uat-owner { border-left:3px solid var(--warn); background:rgba(232,175,40,.04); }
+  /* TSKMGR-95 — Email candidate signal badges + pattern summary bar */
+  .email-signal-badge { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; letter-spacing:.03em; text-transform:uppercase; }
+  .email-signal-badge.access_issue    { background:rgba(176,0,32,.12); color:#b00020; border:1px solid rgba(176,0,32,.25); }
+  .email-signal-badge.stale_data      { background:rgba(185,101,26,.12); color:#b9651a; border:1px solid rgba(185,101,26,.25); }
+  .email-signal-badge.feature_request { background:rgba(0,82,204,.10); color:#0052cc; border:1px solid rgba(0,82,204,.20); }
+  .email-signal-badge.broken          { background:rgba(213,102,25,.12); color:#d56619; border:1px solid rgba(213,102,25,.25); }
+  .email-signal-badge.ownership_domain{ background:rgba(90,62,175,.12); color:var(--accent); border:1px solid rgba(90,62,175,.25); }
+  :root.theme-dark .email-signal-badge.access_issue    { background:rgba(248,113,113,.18); color:#fca5a5; border-color:rgba(248,113,113,.30); }
+  :root.theme-dark .email-signal-badge.stale_data      { background:rgba(245,158,11,.18); color:#fbbf24; border-color:rgba(245,158,11,.30); }
+  :root.theme-dark .email-signal-badge.feature_request { background:rgba(96,165,250,.18); color:#93c5fd; border-color:rgba(96,165,250,.30); }
+  :root.theme-dark .email-signal-badge.broken          { background:rgba(251,146,60,.18); color:#fdba74; border-color:rgba(251,146,60,.30); }
+  :root.theme-dark .email-signal-badge.ownership_domain{ background:rgba(167,139,250,.18); color:#c4b5fd; border-color:rgba(167,139,250,.30); }
+  .email-candidate-card { border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:8px; border-left:3px solid var(--accent); }
+  .email-candidate-card .suggested-title { font-size:12px; color:var(--accent); margin-top:5px; }
+  .email-pattern-bar { background:rgba(0,0,0,.025); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:12px; font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .email-pattern-bar .pb-icon { font-size:14px; }
+  .email-pattern-bar .pb-text { flex:1; }
+  .domain-editor-row { display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid var(--line); font-size:12px; }
+  .domain-editor-row:last-of-type { border-bottom:0; }
   /* TSKMGR-49 — Ritual step structure */
   .ritual-step { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
   .ritual-step.done { opacity: .7; }
@@ -2076,6 +2103,40 @@
   //   exceptDescriptionUpdateByOthers: bool (calendar_update only),
   //   label: string, createdAt: ISO }]
   if (!Array.isArray(STATE.emailTriage.filterRules)) STATE.emailTriage.filterRules = [];
+  // TSKMGR-95 — Domain ownership config. emailOwnershipDomains defines Owen's responsibility areas.
+  // Shape: [{ id, label, keywords: [string], description }]
+  if (!Array.isArray(STATE.emailOwnershipDomains)) STATE.emailOwnershipDomains = [];
+  // Seed defaults once via flag v395domains
+  if (!STATE._seeds || !STATE._seeds.v395domains) {
+    if (!STATE._seeds || typeof STATE._seeds !== "object") STATE._seeds = {};
+    STATE._seeds.v395domains = true;
+    if (!STATE.emailOwnershipDomains.length) {
+      STATE.emailOwnershipDomains = [
+        { id: "powerbi", label: "Power BI", keywords: ["power bi", "powerbi", "pbi", "report", "dashboard", "data", "tableau"], description: "Power BI reports and data" },
+        { id: "connections", label: "Connections", keywords: ["connections", "discipleship", "engagement level", "cru connections"], description: "AIA Connections requests from athletesinaction.org" },
+        { id: "square", label: "Square", keywords: ["square", "payment", "transaction", "pos", "point of sale"], description: "Square payment requests" }
+      ];
+    }
+  }
+  // TSKMGR-95 — Pattern learning feedback. Shape: [{ threadId, senderEmail, signalType, decision: "created"|"dismissed"|"ignored_sender", timestamp }]
+  if (!Array.isArray(STATE.emailFeedback)) STATE.emailFeedback = [];
+  // TSKMGR-80 — Basecamp project registry + ingest state
+  // basecampProjects: [{ id, name, active, todosetId, chatId }]
+  if (!Array.isArray(STATE.basecampProjects)) STATE.basecampProjects = [];
+  // Seed defaults once via flag v396basecamp
+  if (!STATE._seeds || !STATE._seeds.v396basecamp) {
+    if (!STATE._seeds || typeof STATE._seeds !== "object") STATE._seeds = {};
+    STATE._seeds.v396basecamp = true;
+    STATE.basecampProjects = [
+      { id: 39598744, name: "Owen & Jerry",    active: true,  todosetId: 7938048605, chatId: 7938048608 },
+      { id: 25762386, name: "Central Arkansas", active: false, todosetId: 4527984734, chatId: 4527984740 },
+      { id: 25309499, name: "ELC",              active: true,  todosetId: 4428547350, chatId: 4428547353 }
+    ];
+  }
+  // basecampTasks: flat array of todo items assigned to Owen, keyed by source_url
+  if (!Array.isArray(STATE.basecampTasks)) STATE.basecampTasks = [];
+  // basecampAttention: message board posts + campfire lines needing Owen's attention
+  if (!Array.isArray(STATE.basecampAttention)) STATE.basecampAttention = [];
   // TSKMGR-47 — Jira UAT live cache (not persisted — refreshed on each scan)
   // Shape: { items: [{ key, summary, status, project, assigneeEmail, assigneeName,
   //   updatedAt, uatColumn, jiraId, url }], lastScanAt, scanInProgress }
@@ -3028,6 +3089,170 @@
     return results;
   }
 
+  // ============================================================
+  // TSKMGR-95 — Domain-aware email task candidate detection
+  // ============================================================
+
+  /**
+   * Strip quoted reply text from an email body, returning only the fresh content.
+   * Removes everything from the first reply-chain marker onwards.
+   */
+  function _stripQuotedReply(body) {
+    if (!body) return "";
+    // Patterns that mark the start of a quoted block
+    var patterns = [
+      /^On .{5,80}wrote:/im,
+      /^-{3,}\s*Original Message\s*-{3,}/im,
+      /^From:.*\nSent:/im,
+      /^From:.*\nDate:/im
+    ];
+    var cutAt = body.length;
+    patterns.forEach(function (re) {
+      var m = re.exec(body);
+      if (m && m.index < cutAt) cutAt = m.index;
+    });
+    // Also cut at first line starting with ">"
+    var lines = body.split("\n");
+    var quoteLineIdx = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (/^\s*>/.test(lines[i])) { quoteLineIdx = i; break; }
+    }
+    if (quoteLineIdx >= 0) {
+      var linesCutAt = lines.slice(0, quoteLineIdx).join("\n").length;
+      if (linesCutAt < cutAt) cutAt = linesCutAt;
+    }
+    return body.slice(0, cutAt).trim();
+  }
+
+  /**
+   * Analyze a Gmail thread and return task candidate signals.
+   * @param {object} thread - Full thread from STATE.emailTriage.threads (already classified)
+   * @returns {{ isCandidate, confidence, signalType, signalLabel, suggestedTitle, freshBody }}
+   */
+  function _emailAnalyze(thread) {
+    var DEFAULT = { isCandidate: false, confidence: 0, signalType: null, signalLabel: null, suggestedTitle: null, freshBody: "" };
+    if (!thread) return DEFAULT;
+
+    var subject = thread.subject || "";
+    var rawBody = thread.snippet || "";
+    var freshBody = _stripQuotedReply(rawBody);
+    var bodyLow = freshBody.toLowerCase();
+    var subjectLow = subject.toLowerCase();
+
+    var isCandidate = false;
+    var confidence = 0;
+    var signalType = null;
+    var signalLabel = null;
+
+    // ----- Step 2: Ownership domain match -----
+    var domains = STATE.emailOwnershipDomains || [];
+    var matchedDomain = null;
+    for (var di = 0; di < domains.length; di++) {
+      var dom = domains[di];
+      var kws = dom.keywords || [];
+      for (var ki = 0; ki < kws.length; ki++) {
+        if (subjectLow.indexOf(kws[ki].toLowerCase()) !== -1 || bodyLow.indexOf(kws[ki].toLowerCase()) !== -1) {
+          matchedDomain = dom;
+          break;
+        }
+      }
+      if (matchedDomain) break;
+    }
+    if (matchedDomain) {
+      isCandidate = true;
+      confidence = 0.6;
+      signalType = "ownership_domain";
+      signalLabel = "Relates to " + matchedDomain.label;
+    }
+
+    // ----- Step 3: Body signal detection (higher confidence wins) -----
+    var ACCESS_RE = /can't access|don't have access|cannot access|getting an error|can't open|no permission|not authorized|access denied/i;
+    var STALE_RE = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/i;
+    var FEATURE_RE = /would it be possible|can we add|is there a way|wondering if|could you update|any chance|feature request|enhancement|can you add/i;
+    var BROKEN_RE = /not working|broken|not loading|not showing|seems wrong|incorrect data|wrong data|not displaying|\berror\b/i;
+
+    if (ACCESS_RE.test(freshBody)) {
+      if (0.85 > confidence) { isCandidate = true; confidence = 0.85; signalType = "access_issue"; signalLabel = "Access issue reported"; }
+    }
+    if (BROKEN_RE.test(freshBody)) {
+      if (0.80 > confidence) { isCandidate = true; confidence = 0.80; signalType = "broken"; signalLabel = "Something broken or incorrect"; }
+      else if (signalType !== "access_issue" && 0.80 >= confidence) { isCandidate = true; confidence = 0.80; signalType = "broken"; signalLabel = "Something broken or incorrect"; }
+    }
+    // Stale data: look for date mentions and check gap
+    if (STALE_RE.test(freshBody)) {
+      var emailDate = thread.date ? new Date(thread.date) : new Date();
+      var dateMatches = freshBody.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/gi) || [];
+      var staleFound = false;
+      for (var dmi = 0; dmi < dateMatches.length; dmi++) {
+        try {
+          var parsed = new Date(dateMatches[dmi]);
+          if (!isNaN(parsed.getTime())) {
+            var gapDays = (emailDate - parsed) / 86400000;
+            if (gapDays > 21) { staleFound = true; break; }
+          }
+        } catch (e) {}
+      }
+      if (staleFound && 0.75 > confidence) { isCandidate = true; confidence = 0.75; signalType = "stale_data"; signalLabel = "Stale data complaint"; }
+    }
+    if (FEATURE_RE.test(freshBody)) {
+      if (0.65 > confidence) { isCandidate = true; confidence = 0.65; signalType = "feature_request"; signalLabel = "Feature or change request"; }
+    }
+
+    if (!isCandidate) return DEFAULT;
+
+    // ----- Step 4: Title suggestion -----
+    var senderFirst = (function () {
+      var dn = extractDisplayName(thread.sender || "");
+      return (dn || "").split(/\s+/)[0] || "them";
+    })();
+    var cleanSubject = subject.replace(/^(re:|fwd?:)\s*/gi, "").trim() || "(no subject)";
+    var suggestedTitle = "";
+    if (signalType === "access_issue")     suggestedTitle = "Fix access for " + senderFirst + " — " + cleanSubject;
+    else if (signalType === "stale_data")  suggestedTitle = "Update stale data — " + cleanSubject;
+    else if (signalType === "feature_request") suggestedTitle = "Review feature request from " + senderFirst + " — " + cleanSubject;
+    else if (signalType === "broken")      suggestedTitle = "Investigate issue reported by " + senderFirst + " — " + cleanSubject;
+    else                                   suggestedTitle = "Follow up with " + senderFirst + " — " + cleanSubject;
+
+    // ----- Step 6: Pattern learning suppression -----
+    var feedback = STATE.emailFeedback || [];
+    var senderLow = (thread.senderEmail || "").toLowerCase();
+    // Count prior dismissals from this sender with this signal type
+    var senderSignalDismissals = feedback.filter(function (f) {
+      return f.senderEmail && f.senderEmail.toLowerCase() === senderLow && f.signalType === signalType && f.decision === "dismissed";
+    }).length;
+    if (senderSignalDismissals >= 3) return DEFAULT; // learned to suppress
+    // Count global dismissals of this signal type
+    var globalSignalDismissals = feedback.filter(function (f) {
+      return f.signalType === signalType && f.decision === "dismissed";
+    }).length;
+    if (globalSignalDismissals >= 5) confidence = Math.max(0, confidence - 0.2);
+
+    return { isCandidate: true, confidence: confidence, signalType: signalType, signalLabel: signalLabel, suggestedTitle: suggestedTitle, freshBody: freshBody };
+  }
+
+  /**
+   * Scan STATE.emailFeedback for the last 30 days and return cluster summaries
+   * where 3+ entries share the same signalType.
+   */
+  function _emailPatternSummaries() {
+    var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    var feedback = (STATE.emailFeedback || []).filter(function (f) { return f.timestamp >= cutoff; });
+    // Group by signalType
+    var groups = {};
+    feedback.forEach(function (f) {
+      if (!groups[f.signalType]) groups[f.signalType] = { signalType: f.signalType, count: 0, createdCount: 0, dismissedCount: 0, senders: [] };
+      var g = groups[f.signalType];
+      g.count++;
+      if (f.decision === "created") g.createdCount++;
+      if (f.decision === "dismissed") g.dismissedCount++;
+      if (f.senderEmail && g.senders.indexOf(f.senderEmail) === -1) g.senders.push(f.senderEmail);
+    });
+    var LABELS = { access_issue: "access issue", stale_data: "stale data report", feature_request: "feature request", broken: "broken/incorrect report", ownership_domain: "domain-related email" };
+    return Object.values(groups).filter(function (g) { return g.count >= 3; }).map(function (g) {
+      return { signalType: g.signalType, signalLabel: LABELS[g.signalType] || g.signalType, count: g.count, createdCount: g.createdCount, dismissedCount: g.dismissedCount, senders: g.senders };
+    });
+  }
+
   /**
    * Create a task from an email thread entry. Routes to the best matching partner/committee/project.
    * @param {object} entry - An entry from STATE.emailTriage.threads
@@ -3111,6 +3336,35 @@
     }
 
     showSave("error", "No container found to route task");
+  }
+
+  /**
+   * TSKMGR-95 — Create a task from a candidate card using the suggested title from _emailAnalyze.
+   * Writes feedback, marks thread dismissed, and re-renders.
+   */
+  function createTaskFromEmailCandidate(entry, analysis, reRender) {
+    // Override candidateTaskTitle with the analysis suggestedTitle, then delegate
+    var prev = entry.candidateTaskTitle;
+    if (analysis && analysis.suggestedTitle) entry.candidateTaskTitle = analysis.suggestedTitle;
+    createTaskFromEmail(entry);
+    if (analysis && analysis.suggestedTitle) entry.candidateTaskTitle = prev; // restore
+
+    // Write feedback
+    STATE.emailFeedback = STATE.emailFeedback || [];
+    STATE.emailFeedback.push({ threadId: entry.id, senderEmail: entry.senderEmail || "", signalType: analysis ? analysis.signalType : null, decision: "created", timestamp: nowIso() });
+    persistState("Create task from email candidate (TSKMGR-95)");
+    if (typeof reRender === "function") reRender();
+  }
+
+  /**
+   * TSKMGR-95 — Dismiss a candidate card, writing feedback.
+   */
+  function dismissEmailCandidate(entry, analysis, reRender) {
+    entry.dismissed = true;
+    STATE.emailFeedback = STATE.emailFeedback || [];
+    STATE.emailFeedback.push({ threadId: entry.id, senderEmail: entry.senderEmail || "", signalType: analysis ? analysis.signalType : null, decision: "dismissed", timestamp: nowIso() });
+    persistState("Dismiss email candidate (TSKMGR-95)");
+    if (typeof reRender === "function") reRender();
   }
 
   /** Check if a sender email is in the ignored list. */
@@ -3403,8 +3657,157 @@
       results.push("jira UAT error: " + (e.message || e));
     }
 
+    // 6. TSKMGR-80 — Basecamp ingest: todos, message board, campfire for active projects
+    try {
+      var bcResult = await scanBasecampSources();
+      results.push("basecamp: " + bcResult.todos + " todos, " + bcResult.attention + " attention items");
+    } catch (e) {
+      results.push("basecamp error: " + (e.message || e));
+    }
+
     showSave("saved", "Refreshed: " + results.join(" · "));
     return results;
+  }
+
+  // ============================================================
+  // TSKMGR-80 — Basecamp ingest: todos, message board, campfire
+  // ============================================================
+  const BASECAMP_ACCOUNT_ID = 3105655;
+  const BASECAMP_OWNER_ID = 37720002;
+
+  async function scanBasecampSources() {
+    if (!window.cowork || typeof window.cowork.callMcpTool !== "function") {
+      console.warn("[basecamp] window.cowork.callMcpTool unavailable — skipping Basecamp ingest");
+      return { todos: 0, attention: 0 };
+    }
+
+    var activeProjects = (STATE.basecampProjects || []).filter(function (p) { return p.active; });
+    var newTodos = 0;
+    var newAttention = 0;
+    var now = Date.now();
+    var fortyEightHours = 48 * 60 * 60 * 1000;
+    var fourteenDays = 14 * 24 * 60 * 60 * 1000;
+
+    for (var pi = 0; pi < activeProjects.length; pi++) {
+      var proj = activeProjects[pi];
+
+      // ---- 1. Todos assigned to Owen ----
+      try {
+        var listsRaw = await window.cowork.callMcpTool("mcp__basecamp__get_todolists", { project_id: proj.id });
+        var listsData = unwrapMcp(listsRaw).data;
+        var lists = Array.isArray(listsData) ? listsData : (pickArr(listsData, "todolists") || pickArr(listsData, "todo_lists") || []);
+        for (var li = 0; li < lists.length; li++) {
+          var list = lists[li];
+          try {
+            var todosRaw = await window.cowork.callMcpTool("mcp__basecamp__get_todos", { project_id: proj.id, todolist_id: list.id });
+            var todosData = unwrapMcp(todosRaw).data;
+            var todos = Array.isArray(todosData) ? todosData : (pickArr(todosData, "todos") || []);
+            for (var ti = 0; ti < todos.length; ti++) {
+              var todo = todos[ti];
+              // Filter: assigned to Owen
+              var assignees = todo.assignees || [];
+              var isAssignedToOwen = assignees.some(function (a) { return a && (a.id === BASECAMP_OWNER_ID || String(a.id) === String(BASECAMP_OWNER_ID)); });
+              if (!isAssignedToOwen) continue;
+              // Deduplicate by source_url
+              var sourceUrl = todo.app_url || ("https://app.basecamp.com/" + BASECAMP_ACCOUNT_ID + "/buckets/" + proj.id + "/todos/" + todo.id);
+              var alreadyExists = (STATE.basecampTasks || []).some(function (t) { return t.source_url === sourceUrl; });
+              if (alreadyExists) continue;
+              STATE.basecampTasks = STATE.basecampTasks || [];
+              STATE.basecampTasks.push({
+                id: "bc-" + todo.id,
+                text: todo.content || todo.title || "(untitled)",
+                detail: todo.description || null,
+                dueBy: todo.due_on || null,
+                status: todo.completed ? "done" : "open",
+                priority: "medium",
+                source_url: sourceUrl,
+                source_context: {
+                  source_type: "basecamp_todo",
+                  project_name: proj.name,
+                  project_id: proj.id,
+                  todolist_name: list.title || list.name || ""
+                },
+                created_at: todo.created_at || new Date().toISOString(),
+                assigneeEmail: OWNER_EMAIL
+              });
+              newTodos++;
+            }
+          } catch (e) {
+            console.warn("[basecamp] get_todos error for list", list.id, "in project", proj.id, e);
+          }
+        }
+      } catch (e) {
+        console.warn("[basecamp] get_todolists error for project", proj.id, e);
+      }
+
+      // ---- 2. Message board posts needing attention ----
+      try {
+        var searchRaw = await window.cowork.callMcpTool("mcp__basecamp__search_basecamp", { project_id: proj.id, query: "Owen" });
+        var searchData = unwrapMcp(searchRaw).data;
+        var searchResults = Array.isArray(searchData) ? searchData : (pickArr(searchData, "results") || pickArr(searchData, "items") || []);
+        for (var si = 0; si < searchResults.length; si++) {
+          var item = searchResults[si];
+          // Only surface message board posts (recent, last 14 days)
+          var itemType = (item.type || item.recordable_type || "").toLowerCase();
+          if (itemType !== "message" && !itemType.includes("message")) continue;
+          if (!item.created_at) continue;
+          var itemAge = now - new Date(item.created_at).getTime();
+          if (itemAge > fourteenDays) continue;
+          var itemUrl = item.app_url || "";
+          var alreadyAttention = (STATE.basecampAttention || []).some(function (a) { return a.url === itemUrl; });
+          if (alreadyAttention) continue;
+          STATE.basecampAttention = STATE.basecampAttention || [];
+          STATE.basecampAttention.push({
+            id: "bc-msg-" + item.id,
+            title: item.title || item.subject || "(no title)",
+            url: itemUrl,
+            projectName: proj.name,
+            type: "message_board",
+            created_at: item.created_at
+          });
+          newAttention++;
+        }
+      } catch (e) {
+        console.warn("[basecamp] search_basecamp error for project", proj.id, e);
+      }
+
+      // ---- 3. Campfire recent messages from others ----
+      try {
+        var campRaw = await window.cowork.callMcpTool("mcp__basecamp__get_campfire_lines", { project_id: proj.id, chat_id: proj.chatId });
+        var campData = unwrapMcp(campRaw).data;
+        var lines = Array.isArray(campData) ? campData : (pickArr(campData, "lines") || []);
+        for (var ci = 0; ci < lines.length; ci++) {
+          var line = lines[ci];
+          if (!line.created_at) continue;
+          var lineAge = now - new Date(line.created_at).getTime();
+          if (lineAge > fortyEightHours) continue;
+          // Skip lines from Owen himself
+          var creator = line.creator || line.author || {};
+          var creatorId = creator.id || creator.personId;
+          if (creatorId && (creatorId === BASECAMP_OWNER_ID || String(creatorId) === String(BASECAMP_OWNER_ID))) continue;
+          var lineUrl = "https://app.basecamp.com/" + BASECAMP_ACCOUNT_ID + "/projects/" + proj.id;
+          var lineId = "bc-camp-" + line.id;
+          var alreadyCamp = (STATE.basecampAttention || []).some(function (a) { return a.id === lineId; });
+          if (alreadyCamp) continue;
+          STATE.basecampAttention = STATE.basecampAttention || [];
+          STATE.basecampAttention.push({
+            id: lineId,
+            title: (line.content || "").substring(0, 80),
+            author: creator.name || "Unknown",
+            url: lineUrl,
+            projectName: proj.name,
+            type: "campfire",
+            created_at: line.created_at
+          });
+          newAttention++;
+        }
+      } catch (e) {
+        console.warn("[basecamp] get_campfire_lines error for project", proj.id, e);
+      }
+    }
+
+    persistState("Basecamp ingest (TSKMGR-80)");
+    return { todos: newTodos, attention: newAttention };
   }
 
   async function ensureLive(partnerId) {
@@ -6400,7 +6803,9 @@
 
   function renderNeedsAttentionPanel(panel) {
     const groups = collectNeedsAttention();
-    const total = groups.needDate.length + groups.recentMust.length + groups.needClarify.length;
+    const bcTasks = (STATE.basecampTasks || []).filter(function (t) { return t.status !== "done" && t.status !== "cancelled"; });
+    const bcAttention = (STATE.basecampAttention || []);
+    const total = groups.needDate.length + groups.recentMust.length + groups.needClarify.length + bcTasks.length + bcAttention.length;
     if (!total) {
       panel.append(ce("div", { class: "mytasks-panel-empty" }, "Nothing needs your attention. Nice."));
       return;
@@ -6409,6 +6814,76 @@
     renderNeedsAttentionSubgroup(panel, "Recently added Must*", groups.recentMust);
     // TODO TSKMGR-51 — clarificationNeeded flag has no ingestion source yet; render path is ready
     renderNeedsAttentionSubgroup(panel, "Need clarification", groups.needClarify);
+    // TSKMGR-80 — Basecamp tasks + attention items
+    if (bcTasks.length || bcAttention.length) {
+      var bcWrap = ce("div", { class: "mytasks-subgroup" });
+      var bcHead = ce("div", { class: "mytasks-subgroup-head" });
+      bcHead.append(ce("span", { class: "lbl" }, "Basecamp"));
+      bcHead.append(ce("span", { class: "count" }, "(" + (bcTasks.length + bcAttention.length) + ")"));
+      // Manual refresh button for Basecamp only
+      var bcRefreshBtn = ce("button", { class: "btn tiny", style: "margin-left:auto", onclick: async function () {
+        bcRefreshBtn.disabled = true;
+        bcRefreshBtn.textContent = "Refreshing…";
+        try {
+          var r = await scanBasecampSources();
+          showSave("saved", "Basecamp: " + r.todos + " todos, " + r.attention + " attention items");
+        } catch (e) {
+          showSave("error", "Basecamp refresh failed: " + (e.message || e));
+        }
+        bcRefreshBtn.disabled = false;
+        bcRefreshBtn.textContent = "Refresh BC";
+        renderDossier();
+      } }, "Refresh BC");
+      bcHead.append(bcRefreshBtn);
+      bcWrap.append(bcHead);
+      var bcList = ce("div", { class: "mytasks-list" });
+      // Render open todo tasks as simple task rows
+      bcTasks.forEach(function (t) {
+        var row = ce("div", { class: "mytasks-row", style: "padding:4px 6px;border-bottom:1px solid var(--line);font-size:13px;display:flex;align-items:baseline;gap:8px" });
+        var ctx = t.source_context || {};
+        var who = ce("div", { style: "font-size:11px;color:var(--muted);font-weight:600;width:110px;flex:0 0 110px" }, ctx.project_name || "Basecamp");
+        var what = ce("div", { style: "flex:1;min-width:0" });
+        if (t.source_url) {
+          var link = ce("a", { href: t.source_url, target: "_blank", style: "color:inherit;text-decoration:none" }, t.text || "(no title)");
+          what.append(link);
+        } else {
+          what.append(document.createTextNode(t.text || "(no title)"));
+        }
+        if (ctx.todolist_name) {
+          what.append(ce("span", { style: "font-size:11px;color:var(--muted);margin-left:6px" }, ctx.todolist_name));
+        }
+        var metaR = ce("div", { style: "font-size:11px;color:var(--muted)" });
+        if (t.dueBy) metaR.append(document.createTextNode(fmtDate(t.dueBy)));
+        // Mark done button
+        var doneBtn = ce("button", { class: "btn tiny", onclick: function () {
+          t.status = "done";
+          persistState("Mark Basecamp todo done: " + t.id);
+          renderDossier();
+        } }, "Done");
+        row.append(who, what, metaR, doneBtn);
+        bcList.append(row);
+      });
+      // Render attention items (message board + campfire) as link rows
+      bcAttention.forEach(function (attn) {
+        var row = ce("div", { style: "padding:4px 6px;border-bottom:1px solid var(--line);font-size:13px;display:flex;align-items:baseline;gap:8px" });
+        var typeIcon = attn.type === "campfire" ? "💬" : "📋";
+        var who = ce("div", { style: "font-size:11px;color:var(--muted);font-weight:600;width:110px;flex:0 0 110px" }, attn.projectName || "Basecamp");
+        var what = ce("div", { style: "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" });
+        what.append(document.createTextNode(typeIcon + " "));
+        if (attn.author) what.append(ce("span", { style: "font-size:11px;color:var(--muted)" }, attn.author + ": "));
+        what.append(document.createTextNode(attn.title || "(no title)"));
+        var openLink = ce("a", { href: attn.url || "#", target: "_blank", style: "font-size:11px;color:var(--accent);margin-left:6px;white-space:nowrap" }, "Open ↗");
+        var dismissBtn = ce("button", { class: "btn tiny", style: "margin-left:4px", onclick: function () {
+          STATE.basecampAttention = (STATE.basecampAttention || []).filter(function (a) { return a.id !== attn.id; });
+          persistState("Dismiss Basecamp attention item: " + attn.id);
+          renderDossier();
+        } }, "Dismiss");
+        row.append(who, what, openLink, dismissBtn);
+        bcList.append(row);
+      });
+      bcWrap.append(bcList);
+      panel.append(bcWrap);
+    }
   }
 
   // ============================================================
@@ -9099,10 +9574,30 @@
     }
     panel.append(scanBar);
 
+    // ---- TSKMGR-95: Pattern summary bar ----
+    var patternSummaries = _emailPatternSummaries();
+    if (patternSummaries.length) {
+      var patternParts = patternSummaries.map(function (s) {
+        var txt = s.count + " " + s.signalLabel + (s.count !== 1 ? "s" : "");
+        if (s.createdCount) txt += " — " + s.createdCount + " became task" + (s.createdCount !== 1 ? "s" : "");
+        if (s.senders.length > 1) txt += " from " + s.senders.length + " senders";
+        return txt;
+      });
+      var patternBar = ce("div", { class: "email-pattern-bar" });
+      patternBar.append(ce("span", { class: "pb-icon" }, "📊"));
+      patternBar.append(ce("span", { class: "pb-text" }, "This month: " + patternParts.join(" · ")));
+      panel.append(patternBar);
+    }
+
     // ---- Partition threads by classification ----
     var phishing = [], quickReply = [], longResponse = [], fyi = [], tasks = [];
+    // TSKMGR-95: run _emailAnalyze on all non-dismissed, non-created threads
+    var candidates = []; // { thread, analysis }
     Object.values(threads).forEach(function (t) {
       if (t.dismissed || t.taskCreated) return;
+      // Run candidate detection on every thread regardless of subject prefix
+      var analysis = _emailAnalyze(t);
+      if (analysis.isCandidate) { candidates.push({ thread: t, analysis: analysis }); return; }
       if (t.classification === "phishing") phishing.push(t);
       else if (t.classification === "quick_reply") quickReply.push(t);
       else if (t.classification === "long_response") longResponse.push(t);
@@ -9113,10 +9608,63 @@
     // Sort each group by date desc
     var dateSorter = function (a, b) { return new Date(b.date || 0) - new Date(a.date || 0); };
     [phishing, quickReply, longResponse, tasks, fyi].forEach(function (arr) { arr.sort(dateSorter); });
+    candidates.sort(function (a, b) { return new Date(b.thread.date || 0) - new Date(a.thread.date || 0); });
 
-    if (!phishing.length && !quickReply.length && !longResponse.length && !tasks.length && !fyi.length) {
+    if (!phishing.length && !quickReply.length && !longResponse.length && !tasks.length && !fyi.length && !candidates.length) {
       panel.append(ce("div", { class: "mytasks-panel-empty" }, STATE.emailTriage.lastScanAt ? "Inbox clear — nothing needs your attention." : "Hit \"Scan Inbox\" to check your email."));
       return;
+    }
+
+    // ---- TSKMGR-95: Candidate task cards ----
+    if (candidates.length) {
+      var SIGNAL_ICONS = { access_issue: "🔑", stale_data: "📅", feature_request: "💡", broken: "🔧", ownership_domain: "🎯" };
+      var candHdr = ce("div", { class: "email-group-header" });
+      candHdr.append("Task Candidates ");
+      candHdr.append(ce("span", { class: "email-group-badge" }, String(candidates.length)));
+      panel.append(candHdr);
+      candidates.forEach(function (c) {
+        var t = c.thread;
+        var analysis = c.analysis;
+        var card = ce("div", { class: "email-candidate-card" });
+        // Top row: signal badge + sender + age
+        var topRow = ce("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap" });
+        var icon = SIGNAL_ICONS[analysis.signalType] || "📬";
+        topRow.append(ce("span", { class: "email-signal-badge " + analysis.signalType }, icon + " " + (analysis.signalLabel || analysis.signalType)));
+        topRow.append(ce("span", { class: "email-sender", style: "font-weight:600" }, extractDisplayName(t.sender)));
+        topRow.append(ce("span", { style: "color:var(--muted);font-size:11px;margin-left:auto" }, t.date ? daysAgo(t.date) : ""));
+        card.append(topRow);
+        // Subject
+        card.append(ce("div", { class: "email-subject", style: "margin-top:4px" }, t.subject || "(no subject)"));
+        // Suggested title
+        if (analysis.suggestedTitle) {
+          card.append(ce("div", { class: "suggested-title" }, "Suggested task: " + analysis.suggestedTitle));
+        }
+        // Confidence
+        var confPct = Math.round((analysis.confidence || 0) * 100);
+        var confColor = confPct >= 80 ? "var(--good)" : confPct >= 60 ? "var(--warn)" : "var(--bad)";
+        card.append(ce("span", { style: "font-size:9px;color:" + confColor + ";display:block;margin-top:2px" }, confPct + "% confidence"));
+        // Actions
+        var acts = ce("div", { class: "email-actions" });
+        acts.append(ce("a", { class: "btn tiny", href: "https://mail.google.com/mail/u/0/#inbox/" + t.id, target: "_blank", style: "text-decoration:none" }, "Open"));
+        (function (captThread, captAnalysis) {
+          acts.append(ce("button", { class: "btn tiny primary", onclick: function () {
+            createTaskFromEmailCandidate(captThread, captAnalysis, renderMyTasksView);
+          } }, "Create Task"));
+          acts.append(ce("button", { class: "btn tiny", onclick: function () {
+            dismissEmailCandidate(captThread, captAnalysis, renderMyTasksView);
+          } }, "Dismiss"));
+          if (captThread.senderEmail) {
+            acts.append(ce("button", { class: "btn tiny", style: "color:var(--muted)", onclick: function () {
+              STATE.emailFeedback = STATE.emailFeedback || [];
+              STATE.emailFeedback.push({ threadId: captThread.id, senderEmail: captThread.senderEmail, signalType: captAnalysis.signalType, decision: "ignored_sender", timestamp: nowIso() });
+              ignoreSender(captThread.senderEmail, captThread.subject);
+              renderMyTasksView();
+            } }, "Ignore sender"));
+          }
+        })(t, analysis);
+        card.append(acts);
+        panel.append(card);
+      });
     }
 
     // ---- Phishing banner ----
@@ -11745,7 +12293,150 @@
     rulesSection.append(rulesBody);
     footer.append(rulesSection);
 
+    // TSKMGR-95 — Ownership domains editor
+    var domainSection = ce("div", { style: "margin-top:12px" });
+    var domainHeader = ce("div", {
+      class: "view-row", style: "cursor:pointer",
+      onclick: function () {
+        var body = domainSection.querySelector(".domain-editor-body");
+        if (body) body.style.display = body.style.display === "none" ? "block" : "none";
+      }
+    }, [
+      ce("div", { class: "view-icon" }, "🎯"),
+      ce("div", {}, "Email ownership domains (" + (STATE.emailOwnershipDomains || []).length + ")")
+    ]);
+    domainSection.append(domainHeader);
+    var domainBody = ce("div", { class: "domain-editor-body", style: "padding:6px 12px;display:none" });
+    domainBody.append(ce("div", { style: "font-size:11px;color:var(--muted);padding:4px 0 8px" },
+      "Keywords that identify emails Owen owns. Matching subjects/bodies surface as task candidates."));
+
+    function renderDomainRows() {
+      // Clear and re-render rows
+      while (domainBody.children.length > 1) domainBody.removeChild(domainBody.lastChild);
+      var domains = STATE.emailOwnershipDomains || [];
+      domains.forEach(function (dom) {
+        var row = ce("div", { class: "domain-editor-row" });
+        var info = ce("div", { style: "flex:1;min-width:0" });
+        info.append(ce("div", { style: "font-weight:600;font-size:12px" }, dom.label));
+        info.append(ce("div", { style: "font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, (dom.keywords || []).join(", ")));
+        row.append(info);
+        row.append(ce("button", { class: "btn tiny", onclick: function () { openDomainEditModal(dom); } }, "Edit"));
+        row.append(ce("button", { class: "btn tiny danger", onclick: function () {
+          STATE.emailOwnershipDomains = (STATE.emailOwnershipDomains || []).filter(function (d) { return d.id !== dom.id; });
+          persistState("Remove ownership domain: " + dom.label);
+          renderRoster();
+        } }, "Remove"));
+        domainBody.append(row);
+      });
+      domainBody.append(ce("button", { class: "btn tiny", style: "margin-top:8px;width:100%", onclick: function () {
+        openDomainEditModal(null);
+      } }, "+ Add domain"));
+    }
+    renderDomainRows();
+    domainSection.append(domainBody);
+    footer.append(domainSection);
+
+    // TSKMGR-80 — Basecamp projects toggle
+    var bcSection = ce("div", { style: "margin-top:12px" });
+    var bcSectionHeader = ce("div", {
+      class: "view-row", style: "cursor:pointer",
+      onclick: function () {
+        var body = bcSection.querySelector(".bc-projects-body");
+        if (body) body.style.display = body.style.display === "none" ? "block" : "none";
+      }
+    }, [
+      ce("div", { class: "view-icon" }, "🏕"),
+      ce("div", {}, "Basecamp projects (" + (STATE.basecampProjects || []).filter(function (p) { return p.active; }).length + " active)")
+    ]);
+    bcSection.append(bcSectionHeader);
+    var bcProjectsBody = ce("div", { class: "bc-projects-body", style: "padding:6px 12px;display:none" });
+    bcProjectsBody.append(ce("div", { style: "font-size:11px;color:var(--muted);padding:4px 0 8px" },
+      "Toggle which Basecamp projects are scanned during refresh."));
+    function renderBcProjectRows() {
+      // Clear existing rows (keep the description div)
+      while (bcProjectsBody.children.length > 1) bcProjectsBody.removeChild(bcProjectsBody.lastChild);
+      (STATE.basecampProjects || []).forEach(function (proj) {
+        var row = ce("div", { style: "display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:12px" });
+        var label = ce("div", { style: "flex:1" });
+        label.append(ce("div", { style: "font-weight:600" }, proj.name));
+        label.append(ce("div", { style: "font-size:10px;color:var(--muted)" }, "ID: " + proj.id));
+        row.append(label);
+        var toggleLabel = ce("label", { style: "display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px" });
+        var toggleInput = ce("input", { type: "checkbox" });
+        if (proj.active) toggleInput.checked = true;
+        toggleInput.addEventListener("change", function () {
+          proj.active = toggleInput.checked;
+          persistState("Toggle Basecamp project (TSKMGR-80)");
+          renderRoster();
+        });
+        toggleLabel.append(toggleInput);
+        toggleLabel.append(document.createTextNode(proj.active ? "Active" : "Inactive"));
+        row.append(toggleLabel);
+        bcProjectsBody.append(row);
+      });
+    }
+    renderBcProjectRows();
+    bcSection.append(bcProjectsBody);
+    footer.append(bcSection);
+
     root.append(footer);
+  }
+
+  /** TSKMGR-95 — Modal to add/edit an ownership domain. */
+  function openDomainEditModal(existingDomain) {
+    var overlay = ce("div", { class: "modal-backdrop", style: "display:flex" });
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") overlay.remove();
+      if (e.key === "Backspace") {
+        var tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
+        var isEditable = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+        if (!isEditable) { e.preventDefault(); e.stopPropagation(); }
+        else e.stopPropagation();
+      }
+    });
+    var modal = ce("div", { class: "modal", style: "max-width:420px" });
+    modal.append(ce("h2", { style: "margin:0 0 4px" }, existingDomain ? "Edit ownership domain" : "Add ownership domain"));
+    modal.append(ce("div", { class: "sub" }, "Emails whose subject or body contains any of these keywords will surface as task candidates."));
+
+    var labelRow = ce("div", { style: "margin:10px 0 4px" });
+    labelRow.append(ce("label", { style: "display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px" }, "Label"));
+    var labelInput = ce("input", { type: "text", value: existingDomain ? existingDomain.label : "", style: "width:100%;box-sizing:border-box;padding:6px;font-size:13px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)", placeholder: "e.g. Power BI" });
+    labelRow.append(labelInput);
+    modal.append(labelRow);
+
+    var kwRow = ce("div", { style: "margin:8px 0 4px" });
+    kwRow.append(ce("label", { style: "display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px" }, "Keywords (comma-separated)"));
+    var kwInput = ce("textarea", { style: "width:100%;box-sizing:border-box;padding:6px;font-size:13px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg);min-height:60px;resize:vertical;font-family:inherit", placeholder: "e.g. power bi, powerbi, pbi, report, dashboard" });
+    kwInput.value = existingDomain ? (existingDomain.keywords || []).join(", ") : "";
+    kwRow.append(kwInput);
+    modal.append(kwRow);
+
+    var footer = ce("div", { class: "footer" });
+    footer.append(ce("button", { class: "btn", onclick: function () { overlay.remove(); } }, "Cancel"));
+    footer.append(ce("button", { class: "btn primary", onclick: function () {
+      var label = labelInput.value.trim();
+      if (!label) { alert("Label is required."); return; }
+      var keywords = kwInput.value.split(",").map(function (k) { return k.trim().toLowerCase(); }).filter(Boolean);
+      if (!keywords.length) { alert("At least one keyword is required."); return; }
+      if (existingDomain) {
+        existingDomain.label = label;
+        existingDomain.keywords = keywords;
+        existingDomain.description = label + " email detection";
+        persistState("Edit ownership domain: " + label);
+      } else {
+        var newDom = { id: "dom_" + Date.now(), label: label, keywords: keywords, description: label + " email detection" };
+        STATE.emailOwnershipDomains = STATE.emailOwnershipDomains || [];
+        STATE.emailOwnershipDomains.push(newDom);
+        persistState("Add ownership domain: " + label);
+      }
+      overlay.remove();
+      renderRoster();
+    } }, existingDomain ? "Save changes" : "Add domain"));
+    modal.append(footer);
+    overlay.append(modal);
+    document.body.append(overlay);
+    setTimeout(function () { labelInput.focus(); }, 50);
   }
 
   // v3.5.3 — Export/Import state helpers
