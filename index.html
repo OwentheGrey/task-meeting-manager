@@ -14,7 +14,16 @@
     "mcp__basecamp__get_todolists",
     "mcp__basecamp__get_todos",
     "mcp__basecamp__search_basecamp",
-    "mcp__basecamp__get_campfire_lines"
+    "mcp__basecamp__get_campfire_lines",
+    "mcp__3b28c4c1-7f7d-47f0-bed6-8369ba2096f4__search_files",
+    "mcp__3b28c4c1-7f7d-47f0-bed6-8369ba2096f4__create_file",
+    "mcp__3b28c4c1-7f7d-47f0-bed6-8369ba2096f4__read_file_content",
+    "mcp__3b28c4c1-7f7d-47f0-bed6-8369ba2096f4__download_file_content",
+    "mcp__google-drive__search",
+    "mcp__google-drive__createFolder",
+    "mcp__google-drive__createGoogleDoc",
+    "mcp__google-drive__readGoogleDoc",
+    "mcp__google-drive__updateGoogleDoc"
   ],
   "mcpServerNames": [
     "cowork",
@@ -28,7 +37,16 @@
     "Basecamp",
     "Basecamp",
     "Basecamp",
-    "Basecamp"
+    "Basecamp",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive",
+    "Google Drive"
   ],
   "description": "Personal task/meeting manager with email triage, calendar prep, Jira integration. Restored from GitHub copy (OwentheGrey/task-meeting-manager, main branch) after the artifact manifest entry pointed to a missing folder."
 }
@@ -741,6 +759,24 @@
   .cp-link-badge { display: inline-block; margin-top: 4px; font-size: 10px; color: #813b73; font-style: italic; }
   .cp-link-badge a { color: #813b73; text-decoration: underline; cursor: pointer; }
   .cp-link-badge a:hover { color: #5a2a52; }
+
+  /* TSKMGR-93 Phase 1 — Relational profiles panel */
+  .relational-panel { margin-top: 16px; }
+  .relational-touchpoints-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--accent); margin-bottom: 6px; }
+  .relational-brief { background: var(--bg-card, rgba(0,0,0,.02)); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 13px; }
+  .relational-brief h4 { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 4px; }
+  .relational-brief h4:first-child { margin-top: 0; }
+  .relational-note-form { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .relational-note-form select, .relational-note-form textarea { font-size: 13px; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
+  .relational-note-form textarea { min-height: 64px; resize: vertical; }
+  .relational-doc-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+  .relational-doc-link:hover { text-decoration: underline; }
+  .relational-no-doc { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .settings-section { margin-bottom: 24px; padding: 14px 16px; background: rgba(0,0,0,.02); border: 1px solid var(--line); border-radius: 8px; }
+  .settings-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+  .settings-section .settings-desc { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .settings-partner-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .settings-partner-status { font-size: 12px; min-width: 18px; text-align: center; }
 
   /* v3.4.2a — context line shown under tasks (manual capture context, notes excerpts) */
   .context-line { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; padding-left: 4px; border-left: 2px solid rgba(90,62,175,.25); padding-block: 2px; padding-inline-start: 6px; }
@@ -1708,7 +1744,7 @@
       "id": "rick-rogers",
       "name": "Rick Rogers",
       "email": "rick.rogers@athletesinaction.org",
-      "slackUserId": "U03SXCBD17T",
+      "slackUserId": "",
       "role": "",
       "cadence": "",
       "notes": "",
@@ -2153,6 +2189,11 @@
   if (!Array.isArray(STATE.basecampTasks)) STATE.basecampTasks = [];
   // basecampAttention: message board posts + campfire lines needing Owen's attention
   if (!Array.isArray(STATE.basecampAttention)) STATE.basecampAttention = [];
+  // TSKMGR-93 Phase 1 — Relational profiles (Google Drive docs per partner)
+  if (typeof STATE.relationalFolderId === "undefined") STATE.relationalFolderId = null;
+  if (!STATE.relationalCache || typeof STATE.relationalCache !== "object") STATE.relationalCache = {};
+  // Seed relationalDocId on any existing partners that don't have it
+  (STATE.partners || []).forEach(function(p) { if (typeof p.relationalDocId === "undefined") p.relationalDocId = null; });
   // TSKMGR-47 — Jira UAT live cache (not persisted — refreshed on each scan)
   // Shape: { items: [{ key, summary, status, project, assigneeEmail, assigneeName,
   //   updatedAt, uatColumn, jiraId, url }], lastScanAt, scanInProgress }
@@ -2202,7 +2243,13 @@
       const raw = await window.cowork.callMcpTool("mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_user_profile", {
         user_id: partner.slackUserId
       });
-      const profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+      // callMcpTool inside artifacts returns {content, structuredContent, isError}
+      let profile = null;
+      try {
+        profile = raw.structuredContent ?? JSON.parse(raw.content[0].text);
+      } catch (e) {
+        profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+      }
       const url = (profile && profile.profile && (profile.profile.image_192 || profile.profile.image_72 || profile.profile.image_48)) || null;
       if (url) _slackAvatarSet(partner.slackUserId, url);
       return url;
@@ -2663,12 +2710,18 @@
     "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_users",
     "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_search",
     "mcp__eb97a91a-5235-4393-bfd6-e5da0b436f69__jira_get_sprints_from_board",
-    "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_canvas"
+    "mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_canvas",
+    "mcp__google-drive__search",
+    "mcp__google-drive__createFolder",
+    "mcp__google-drive__createGoogleDoc",
+    "mcp__google-drive__readGoogleDoc",
+    "mcp__google-drive__updateGoogleDoc"
   ];
   var _CANONICAL_SERVERNAMES = [
     "cowork", "Google Calendar", "Google Calendar", "Google Calendar",
     "Google Calendar", "Gmail", "Slack", "Slack", "Slack", "Slack", "Slack",
-    "Jira POC", "Jira POC", "Slack"
+    "Jira POC", "Jira POC", "Slack",
+    "Google Drive", "Google Drive", "Google Drive", "Google Drive", "Google Drive"
   ];
   (function _patchMetadataIfStale() {
     try {
@@ -8094,10 +8147,328 @@
   }
   function addPartner() {
     const id = "partner-" + Date.now();
-    STATE.partners.push({ id, name: "", email: "", slackUserId: "", role: "", cadence: "", notes: "", relationshipType: "peer", lastReconciledMeetingId: null, jiraQueries: [], agenda: [], commitments: { ownerToPartner: [], partnerToOwner: [], joint: [] }, decisions: [], topicThreads: [], meetingLog: [] });
+    STATE.partners.push({ id, name: "", email: "", slackUserId: "", role: "", cadence: "", notes: "", relationshipType: "peer", lastReconciledMeetingId: null, relationalDocId: null, jiraQueries: [], agenda: [], commitments: { ownerToPartner: [], partnerToOwner: [], joint: [] }, decisions: [], topicThreads: [], meetingLog: [] });
     STATE.selectedPartnerId = id;
     persistState("Add new partner");
     renderRoster(); renderDossier();
+  }
+
+  // ============================================================
+  // TSKMGR-93 Phase 1 — Relational profiles: Google Drive helpers
+  // ============================================================
+
+  // Get or create the "Partner Profiles" Drive folder
+  async function ensureRelationalFolder() {
+    if (STATE.relationalFolderId) return STATE.relationalFolderId;
+    try {
+      const searchRaw = await window.cowork.callMcpTool("mcp__google-drive__search", {
+        query: "name = 'Partner Profiles' and mimeType = 'application/vnd.google-apps.folder'",
+        pageSize: 5
+      });
+      const searchResult = searchRaw.structuredContent ?? JSON.parse(searchRaw.content[0].text);
+      if (searchResult.files && searchResult.files.length > 0) {
+        STATE.relationalFolderId = searchResult.files[0].id;
+        persistState("Set relational folder ID");
+        return STATE.relationalFolderId;
+      }
+      const createRaw = await window.cowork.callMcpTool("mcp__google-drive__createFolder", {
+        name: "Partner Profiles"
+      });
+      const created = createRaw.structuredContent ?? JSON.parse(createRaw.content[0].text);
+      STATE.relationalFolderId = created.id;
+      persistState("Created Partner Profiles folder");
+      return STATE.relationalFolderId;
+    } catch (e) {
+      console.warn("[ensureRelationalFolder]", e);
+      return null;
+    }
+  }
+
+  // Create a new profile doc for a partner
+  async function createRelationalDoc(partner) {
+    try {
+      const folderId = await ensureRelationalFolder();
+      if (!folderId) return null;
+      const title = (partner.name || "Partner") + " — Relational Profile";
+      const initialContent = `# ${title}\n\n## Family\n\n## Important Dates\n\n## Interests & Hobbies\n\n## Living Location\n\n## Travel & Work Travel\n\n## Pets\n\n## Recent Life Events\n\n## Prayer Requests\n\n## Follow-Ups\n\n## Notes\n`;
+      const raw = await window.cowork.callMcpTool("mcp__google-drive__createGoogleDoc", {
+        title: title,
+        content: initialContent,
+        folderId: folderId
+      });
+      const result = raw.structuredContent ?? JSON.parse(raw.content[0].text);
+      const docId = result.id || result.documentId || null;
+      if (docId) {
+        partner.relationalDocId = docId;
+        persistState("Created relational doc for " + (partner.name || "partner"));
+      }
+      return docId;
+    } catch (e) {
+      console.warn("[createRelationalDoc]", e);
+      return null;
+    }
+  }
+
+  // Read a partner's profile doc (with 10-minute TTL caching)
+  async function readRelationalDoc(partner) {
+    if (!partner.relationalDocId) return null;
+    try {
+      const cache = STATE.relationalCache || {};
+      const cached = cache[partner.id];
+      const TEN_MIN = 10 * 60 * 1000;
+      if (cached && cached.fetchedAt && (Date.now() - new Date(cached.fetchedAt).getTime()) < TEN_MIN) {
+        return cached.content;
+      }
+      const raw = await window.cowork.callMcpTool("mcp__google-drive__readGoogleDoc", {
+        documentId: partner.relationalDocId
+      });
+      const result = raw.structuredContent ?? JSON.parse(raw.content[0].text);
+      let content = null;
+      if (typeof result === "string") content = result;
+      else if (result.body) content = JSON.stringify(result.body);
+      else if (result.content) content = typeof result.content === "string" ? result.content : JSON.stringify(result.content);
+      STATE.relationalCache = STATE.relationalCache || {};
+      STATE.relationalCache[partner.id] = { content, fetchedAt: new Date().toISOString() };
+      return content;
+    } catch (e) {
+      console.warn("[readRelationalDoc]", e);
+      return null;
+    }
+  }
+
+  // Append a note to a specific section of a partner's profile doc
+  async function appendRelationalNote(partner, section, noteText) {
+    if (!partner.relationalDocId) return false;
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const formattedNote = "\n" + today + " — " + noteText.trim();
+      const raw = await window.cowork.callMcpTool("mcp__google-drive__readGoogleDoc", {
+        documentId: partner.relationalDocId
+      });
+      const result = raw.structuredContent ?? JSON.parse(raw.content[0].text);
+      let currentContent = typeof result === "string" ? result : (result.content || result.body || "");
+      if (typeof currentContent !== "string") currentContent = JSON.stringify(currentContent);
+      const sectionHeading = "## " + section;
+      const sectionIdx = currentContent.indexOf(sectionHeading);
+      if (sectionIdx === -1) {
+        const notesIdx = currentContent.indexOf("## Notes");
+        if (notesIdx !== -1) {
+          currentContent = currentContent.slice(0, notesIdx + "## Notes".length) + formattedNote + currentContent.slice(notesIdx + "## Notes".length);
+        } else {
+          currentContent += "\n## Notes\n" + formattedNote;
+        }
+      } else {
+        const afterSection = currentContent.indexOf("\n## ", sectionIdx + sectionHeading.length);
+        if (afterSection !== -1) {
+          currentContent = currentContent.slice(0, afterSection) + formattedNote + currentContent.slice(afterSection);
+        } else {
+          currentContent += formattedNote;
+        }
+      }
+      await window.cowork.callMcpTool("mcp__google-drive__updateGoogleDoc", {
+        documentId: partner.relationalDocId,
+        content: currentContent
+      });
+      if (STATE.relationalCache) delete STATE.relationalCache[partner.id];
+      return true;
+    } catch (e) {
+      console.warn("[appendRelationalNote]", e);
+      return false;
+    }
+  }
+
+  // Initialize relational docs for all qualified partners
+  async function initializeAllRelationalDocs(btnEl) {
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Initializing…"; }
+    const qualified = STATE.partners.filter(function(p) {
+      let sourceCount = 0;
+      const agenda = (p.agenda || []).length;
+      const commits = ((p.commitments && p.commitments.ownerToPartner) || []).length +
+                      ((p.commitments && p.commitments.partnerToOwner) || []).length +
+                      ((p.commitments && p.commitments.joint) || []).length;
+      const meetings = (p.meetingLog || []).length;
+      const threads = (p.topicThreads || []).length;
+      if (agenda > 0) sourceCount++;
+      if (commits > 0) sourceCount++;
+      if (meetings > 0) sourceCount++;
+      if (threads > 0) sourceCount++;
+      if (p.slackUserId) sourceCount++;
+      if (p.email) sourceCount++;
+      const total = agenda + commits + meetings + threads;
+      return total >= 4 && sourceCount >= 2;
+    });
+    for (const p of qualified) {
+      if (!p.relationalDocId) {
+        await createRelationalDoc(p);
+      }
+    }
+    persistState("Initialize All relational docs");
+    renderSettings();
+  }
+
+  // Parse a markdown section from a doc string
+  function _parseRelationalSection(content, sectionName) {
+    if (!content || typeof content !== "string") return "";
+    const heading = "## " + sectionName;
+    const idx = content.indexOf(heading);
+    if (idx === -1) return "";
+    const start = idx + heading.length;
+    const nextIdx = content.indexOf("\n## ", start);
+    const raw = (nextIdx === -1 ? content.slice(start) : content.slice(start, nextIdx)).trim();
+    return raw;
+  }
+
+  // Render the relational panel section for a partner dossier
+  function renderRelationalPanel(p) {
+    const panel = ce("section", { class: "block relational-panel" });
+    panel.append(ce("h3", {}, ["Relational", ce("span", { class: "pill synth" }, "Drive doc")]));
+
+    // --- 1. Relational Touchpoints ---
+    const now = new Date();
+    const in14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const relItems = (p.agenda || []).filter(function(a) {
+      if (a.completed) return false;
+      const isRelational = a.relational === true ||
+        (Array.isArray(a.tags) && a.tags.some(function(t) { return /pray|prayer|personal/i.test(t); })) ||
+        /pray|prayer|family|personal|travel|vacation/i.test(a.title || "") ||
+        /pray|prayer|family|personal|travel|vacation/i.test(a.detail || "");
+      if (!isRelational) return false;
+      if (!a.dueBy) return true;
+      const due = new Date(a.dueBy);
+      return due >= now && due <= in14;
+    });
+
+    if (relItems.length > 0) {
+      const tpDiv = ce("div", { style: "margin-bottom:12px" });
+      tpDiv.append(ce("div", { class: "relational-touchpoints-label" }, "RELATIONAL TOUCHPOINTS"));
+      const ul = ce("ul", { class: "agenda-list" });
+      relItems.forEach(function(a) {
+        const li = ce("li", {});
+        const ttl = ce("div", { class: "ttl" }, a.title || "(untitled)");
+        const det = ce("div", { class: "det" }, a.detail || "");
+        li.append(ce("div", { class: "agenda-line" }, [ce("div", { class: "body" }, [ttl, det])]));
+        ul.append(li);
+      });
+      tpDiv.append(ul);
+      panel.append(tpDiv);
+    }
+
+    if (!p.relationalDocId) {
+      // No doc yet — show create button
+      const noDoc = ce("div", { class: "relational-no-doc" }, "This partner doesn't have a profile doc yet. ");
+      const createBtn = ce("button", { class: "btn tiny", onclick: async function() {
+        createBtn.disabled = true; createBtn.textContent = "Creating…";
+        await createRelationalDoc(p);
+        renderDossier();
+      }}, "Create Profile Doc");
+      noDoc.append(createBtn);
+      panel.append(noDoc);
+      return panel;
+    }
+
+    // --- 2. Partner brief (async load) ---
+    const briefDiv = ce("div", { class: "relational-brief" });
+    briefDiv.append(ce("div", { class: "due" }, "Loading…"));
+    panel.append(briefDiv);
+
+    const briefLinks = ce("div", { style: "display:flex;gap:10px;align-items:center;margin-bottom:8px" });
+    briefLinks.append(ce("a", { class: "relational-doc-link", href: "https://docs.google.com/document/d/" + p.relationalDocId + "/edit", target: "_blank", rel: "noopener" }, "View full profile →"));
+    const refreshBtn = ce("button", { class: "btn tiny subtle", onclick: function() {
+      if (STATE.relationalCache) delete STATE.relationalCache[p.id];
+      renderDossier();
+    }}, "Refresh");
+    briefLinks.append(refreshBtn);
+    panel.append(briefLinks);
+
+    // Fire async load
+    (async function() {
+      try {
+        const content = await readRelationalDoc(p);
+        briefDiv.innerHTML = "";
+        if (!content) {
+          briefDiv.append(ce("div", { class: "due" }, "Could not load profile. Check Drive permissions."));
+          return;
+        }
+        const SECTIONS = [
+          { name: "Family", lines: 3 },
+          { name: "Living Location", lines: 1 },
+          { name: "Travel & Work Travel", lines: 2 },
+          { name: "Pets", lines: 1 },
+          { name: "Prayer Requests", lines: 99 }
+        ];
+        let hasAny = false;
+        SECTIONS.forEach(function(s) {
+          const raw = _parseRelationalSection(content, s.name);
+          if (!raw) return;
+          const lines = raw.split("\n").filter(function(l) { return l.trim(); }).slice(0, s.lines);
+          if (!lines.length) return;
+          hasAny = true;
+          briefDiv.append(ce("h4", {}, s.name));
+          lines.forEach(function(l) {
+            briefDiv.append(ce("div", {}, l.replace(/^[-*]\s*/, "")));
+          });
+        });
+        if (!hasAny) briefDiv.append(ce("div", { class: "due" }, "Profile is empty — add notes below."));
+      } catch (e) {
+        briefDiv.innerHTML = "";
+        briefDiv.append(ce("div", { class: "due", style: "color:var(--bad)" }, "Error loading profile: " + e.message));
+      }
+    })();
+
+    // --- 3. Add note form ---
+    const form = ce("div", { class: "relational-note-form" });
+    const SECTION_OPTIONS = ["Family","Important Dates","Interests & Hobbies","Living Location","Travel & Work Travel","Pets","Recent Life Events","Prayer Requests","Follow-Ups","Notes"];
+    const sectionSel = ce("select", {});
+    SECTION_OPTIONS.forEach(function(s) {
+      sectionSel.append(ce("option", { value: s }, s));
+    });
+    const noteTA = ce("textarea", { placeholder: "Add a note…", spellcheck: "true" });
+    const statusDiv = ce("div", { class: "due" });
+    const saveBtn = ce("button", { class: "btn primary tiny", onclick: async function() {
+      const noteText = noteTA.value.trim();
+      if (!noteText) { statusDiv.textContent = "Note is empty."; return; }
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…"; statusDiv.textContent = "";
+      const ok = await appendRelationalNote(p, sectionSel.value, noteText);
+      saveBtn.disabled = false; saveBtn.textContent = "Save";
+      if (ok) { statusDiv.style.color = "var(--good)"; statusDiv.textContent = "Saved!"; noteTA.value = ""; setTimeout(function() { statusDiv.textContent = ""; }, 3000); }
+      else { statusDiv.style.color = "var(--bad)"; statusDiv.textContent = "Error saving — check console."; }
+    }}, "Save");
+    form.append(sectionSel, noteTA, ce("div", { style: "display:flex;gap:8px;align-items:center" }, [saveBtn, statusDiv]));
+    panel.append(form);
+    return panel;
+  }
+
+  // Settings panel renderer (called from renderDefinitions area or sidebar "Settings" link)
+  function renderSettings() {
+    const dos = document.getElementById("dossier"); dos.innerHTML = "";
+    const panel = ce("div", { class: "defs-panel" });
+    panel.append(ce("h2", {}, "Settings"));
+
+    // --- Partner Profiles section ---
+    const ppSec = ce("div", { class: "settings-section" });
+    ppSec.append(ce("h3", {}, "Partner Profiles"));
+    ppSec.append(ce("div", { class: "settings-desc" }, "Creates a Google Drive relational profile doc for partners with 4+ interactions across multiple sources. Docs are stored in a \"Partner Profiles\" folder in your Drive."));
+    const initBtn = ce("button", { class: "btn primary", onclick: function() { initializeAllRelationalDocs(initBtn); } }, "Initialize All");
+    ppSec.append(ce("div", { style: "margin-bottom:12px" }, [initBtn]));
+
+    // Per-partner status table
+    const table = ce("div", { style: "margin-top:10px" });
+    STATE.partners.forEach(function(p) {
+      const row = ce("div", { class: "settings-partner-row" });
+      const statusEl = ce("span", { class: "settings-partner-status", title: p.relationalDocId ? "Doc exists: " + p.relationalDocId : "No doc yet" }, p.relationalDocId ? "✓" : "—");
+      if (p.relationalDocId) statusEl.style.color = "var(--good)";
+      row.append(statusEl);
+      row.append(ce("span", {}, p.name || "(unnamed)"));
+      if (p.relationalDocId) {
+        row.append(ce("a", { class: "relational-doc-link", href: "https://docs.google.com/document/d/" + p.relationalDocId + "/edit", target: "_blank", rel: "noopener", style: "margin-left:6px" }, "open"));
+      }
+      table.append(row);
+    });
+    if (!STATE.partners.length) table.append(ce("div", { class: "due" }, "No partners yet."));
+    ppSec.append(table);
+    panel.append(ppSec);
+
+    dos.append(panel);
   }
 
   // v3.4.2a — render compact source_context line for any task-shaped item.
@@ -12253,6 +12624,8 @@
     const footer = ce("div", { class: "sidebar-footer", id: "sidebar-footer" });
     footer.append(ce("h2", { class: "views-h" }, "Reference & Settings"));
     footer.append(ce("div", { title: "Definitions", class: "view-row" + (STATE.selectedView === "definitions" ? " active" : ""), onclick: () => { STATE.selectedView = "definitions"; renderRoster(); renderDossier(); } }, [ce("div", { class: "view-icon" }, "📖"), ce("div", {}, "Definitions")]));
+    // TSKMGR-93 Phase 1 — Settings view (partner profiles + Drive integration)
+    footer.append(ce("div", { title: "Settings", class: "view-row" + (STATE.selectedView === "settings" ? " active" : ""), onclick: () => { STATE.selectedView = "settings"; renderRoster(); renderDossier(); } }, [ce("div", { class: "view-icon" }, "⚙"), ce("div", {}, "Settings")]));
     // v3.5.1 — Theme toggle moved here. Render as a view-row so it matches Definitions visually.
     const isDark = document.documentElement.classList.contains("theme-dark");
     footer.append(ce("div", {
@@ -12649,6 +13022,7 @@
   function renderDossier() {
     const dos = document.getElementById("dossier"); dos.innerHTML = "";
     if (STATE.selectedView === "definitions") { renderDefinitions(); return; }
+    if (STATE.selectedView === "settings") { renderSettings(); return; }
     // "today" view orphaned in Quick Views Overhaul — legacy persisted state redirects to MY TASKS
     if (STATE.selectedView === "today") { STATE.selectedView = "mytasks"; renderMyTasksView(); return; }
     if (STATE.selectedView === "mytasks") { renderMyTasksView(); return; }
@@ -12762,6 +13136,12 @@
     cols.append(commitCol("Joint", p.commitments.joint, { lane: "joint" }));
     com.append(cols);
     dos.append(com);
+
+    // TSKMGR-93 Phase 1 — Relational panel
+    try {
+      const relPanel = renderRelationalPanel(p);
+      if (relPanel) dos.append(relPanel);
+    } catch (e) { console.warn("[renderRelationalPanel]", e); }
 
     const decSec = ce("section", { class: "block" });
     decSec.append(ce("h3", {}, ["Recent decisions", ce("span", { class: "pill synth" }, "synth")]));
@@ -14089,4 +14469,122 @@
     if (spellMenu) { spellMenu.remove(); spellMenu = null; }
   }
 
-  function 
+  function getWordAtCaret(el) {
+    const val = el.value;
+    let pos = el.selectionStart;
+    if (pos === null) return null;
+    let start = pos;
+    while (start > 0 && /\w/.test(val[start - 1])) start--;
+    let end = pos;
+    while (end < val.length && /\w/.test(val[end])) end++;
+    if (start === end) return null;
+    return { word: val.slice(start, end), start, end };
+  }
+
+  async function getSuggestions(word) {
+    try {
+      const res = await fetch(
+        'https://api.datamuse.com/words?sp=' + encodeURIComponent(word) + '&max=6'
+      );
+      const data = await res.json();
+      return data
+        .map(function(d) { return d.word; })
+        .filter(function(w) { return w.toLowerCase() !== word.toLowerCase(); })
+        .slice(0, 5);
+    } catch (e) { return []; }
+  }
+
+  function showSpellMenu(x, y, suggestions, el, wordInfo) {
+    removeSpellMenu();
+    if (!suggestions.length) return;
+
+    spellMenu = document.createElement('div');
+    spellMenu.style.cssText = [
+      'position:fixed',
+      'z-index:99999',
+      'left:' + x + 'px',
+      'top:' + y + 'px',
+      'background:var(--bg)',
+      'border:1px solid var(--line)',
+      'border-radius:6px',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35)',
+      'padding:4px 0',
+      'min-width:160px',
+      'font-family:inherit',
+      'font-size:13px'
+    ].join(';');
+
+    var hdr = document.createElement('div');
+    hdr.textContent = 'Spelling suggestions';
+    hdr.style.cssText = [
+      'padding:4px 12px',
+      'color:var(--muted)',
+      'font-size:11px',
+      'border-bottom:1px solid var(--line)',
+      'margin-bottom:4px'
+    ].join(';');
+    spellMenu.appendChild(hdr);
+
+    suggestions.forEach(function(s) {
+      var item = document.createElement('div');
+      item.textContent = s;
+      item.style.cssText = [
+        'padding:6px 12px',
+        'cursor:pointer',
+        'color:var(--fg)',
+        'border-radius:4px',
+        'margin:0 4px'
+      ].join(';');
+      item.addEventListener('mouseenter', function() {
+        item.style.background = 'var(--tint-medium)';
+      });
+      item.addEventListener('mouseleave', function() {
+        item.style.background = '';
+      });
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        var val = el.value;
+        el.value = val.slice(0, wordInfo.start) + s + val.slice(wordInfo.end);
+        el.selectionStart = el.selectionEnd = wordInfo.start + s.length;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        removeSpellMenu();
+      });
+      spellMenu.appendChild(item);
+    });
+
+    document.body.appendChild(spellMenu);
+
+    // Nudge on-screen if the menu overflows the viewport
+    var rect = spellMenu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      spellMenu.style.left = (x - rect.width) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      spellMenu.style.top = (y - rect.height) + 'px';
+    }
+  }
+
+  document.addEventListener('contextmenu', async function(e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    if (el.getAttribute('spellcheck') !== 'true') return;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+
+    e.preventDefault();
+    removeSpellMenu();
+
+    var wordInfo = getWordAtCaret(el);
+    if (!wordInfo) return;
+
+    var suggestions = await getSuggestions(wordInfo.word);
+    showSpellMenu(e.clientX, e.clientY, suggestions, el, wordInfo);
+  }, true);
+
+  document.addEventListener('click', removeSpellMenu, true);
+  document.addEventListener('keydown', removeSpellMenu, true);
+  document.addEventListener('scroll', removeSpellMenu, true);
+})();
+</script>
+
+</body>
+</html>
