@@ -209,6 +209,7 @@
   .partner-row.active { background: rgba(90,62,175,.10); }
   .partner-row.unconfigured .nm { color: var(--warn); }
   .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .avatar.partner-avatar-failed { color: var(--bad); }
   .partner-meta .nm { font-weight: 600; font-size: 13px; }
   .partner-meta .sub { font-size: 11px; color: var(--muted); }
   main.dossier { padding: 18px 22px 80px; min-width: 0; }
@@ -2251,7 +2252,12 @@
         profile = typeof raw === "string" ? JSON.parse(raw) : raw;
       }
       const url = (profile && profile.profile && (profile.profile.image_192 || profile.profile.image_72 || profile.profile.image_48)) || null;
-      if (url) _slackAvatarSet(partner.slackUserId, url);
+      if (url) {
+        _slackAvatarSet(partner.slackUserId, url);
+      } else {
+        // Mark as failed so initials render red; don't endlessly retry
+        _slackAvatarSet(partner.slackUserId, "FAILED");
+      }
       return url;
     } catch (e) {
       return null;
@@ -2264,7 +2270,8 @@
   function makePartnerAvatar(partner, sizePx) {
     const cache = _slackAvatarCache();
     const cachedUrl = partner.slackUserId ? cache[partner.slackUserId] : null;
-    if (cachedUrl) {
+    // Cached photo URL — render image directly
+    if (cachedUrl && cachedUrl !== "FAILED") {
       const img = document.createElement("img");
       img.className = "partner-avatar-photo";
       img.src = cachedUrl;
@@ -2278,13 +2285,22 @@
     el.className = "avatar";
     if (sizePx !== 26) { el.style.width = sizePx + "px"; el.style.height = sizePx + "px"; el.style.fontSize = Math.max(10, Math.round(sizePx * 0.42)) + "px"; }
     el.textContent = derivePartnerShortCode(STATE.partners, partner);
+    // If previously failed, show red initials immediately — no retry
+    if (cachedUrl === "FAILED") {
+      el.classList.add("partner-avatar-failed");
+      return el;
+    }
     // Fire async fetch — update element if we get a URL back
     if (partner.slackUserId) {
       el.classList.add("partner-avatar-loading");
       fetchSlackAvatarIfNeeded(partner).then(function(url) {
-        if (!url) { el.classList.remove("partner-avatar-loading"); return; }
-        // Convert bubble to photo
         el.classList.remove("partner-avatar-loading");
+        if (!url) {
+          // Fetch failed — turn initials red
+          el.classList.add("partner-avatar-failed");
+          return;
+        }
+        // Convert bubble to photo
         const img = document.createElement("img");
         img.className = "partner-avatar-photo";
         img.src = url;
