@@ -2225,41 +2225,96 @@
   const initials = (n) => (n || "?").split(/\s+/).map(s => s[0]).slice(0, 2).join("").toUpperCase() || "?";
 
   // TSKMGR-94 — Slack avatar cache helpers
+  // Key bumped to .v2: the v1 cache is full of stale "FAILED" entries from the
+  // old slack_read_user_profile approach (that tool never returns a photo URL),
+  // and "FAILED" entries are intentionally never retried.
   function _slackAvatarCache() {
-    try { return JSON.parse(localStorage.getItem("tmm.v3.slackAvatars") || "{}"); } catch (e) { return {}; }
+    try { return JSON.parse(localStorage.getItem("tmm.v3.slackAvatars.v2") || "{}"); } catch (e) { return {}; }
   }
-  function _slackAvatarSet(slackUserId, url) {
+  function _slackAvatarSet(cacheKey, url) {
     const cache = _slackAvatarCache();
-    cache[slackUserId] = url;
-    localStorage.setItem("tmm.v3.slackAvatars", JSON.stringify(cache));
+    cache[cacheKey] = url;
+    localStorage.setItem("tmm.v3.slackAvatars.v2", JSON.stringify(cache));
+  }
+  // Derive the cache key for a partner's avatar entry. Partners with a known
+  // Slack user ID key on that ID (existing behavior). Partners without one
+  // key on "email:<email>" or "name:<name>" — prefixed so they can never
+  // collide with a real Slack user ID. Returns null if nothing to key on.
+  function _avatarCacheKey(partner) {
+    if (partner.slackUserId) return partner.slackUserId;
+    if (partner.email) return "email:" + partner.email;
+    if (partner.name) return "name:" + partner.name;
+    return null;
   }
 
   // TSKMGR-94 — Fetch Slack avatar for a partner if not already cached.
   // Returns a Promise that resolves to the avatar URL or null.
+  //
+  // NOTE: slack_read_user_profile does NOT return profile photo URLs — its
+  // payload is a flat text summary ({"result": "User ID: ...\nUsername: ..."})
+  // with no image_* fields. The only tool that exposes the avatar is
+  // slack_search_users (detailed), which returns markdown text containing
+  // "Profile Pic: [Photo](https://avatars.slack-edge.com/...)".
+  //
+  // Two modes (keyed via _avatarCacheKey):
+  //  - Mode A (slackUserId known): search by email/name, verify the result
+  //    block contains the known Slack user ID before trusting the photo URL.
+  //  - Mode B (no slackUserId in STATE): search by email/name and take the
+  //    first result block's photo URL — nothing to verify against. Cached
+  //    under "email:<email>" / "name:<name>" so photos persist without an ID.
   async function fetchSlackAvatarIfNeeded(partner) {
-    if (!partner.slackUserId) return null;
+    const cacheKey = _avatarCacheKey(partner);
+    if (!cacheKey) return null;
     const cache = _slackAvatarCache();
-    if (cache[partner.slackUserId]) return cache[partner.slackUserId];
+    if (cache[cacheKey] === "FAILED") return null;
+    if (cache[cacheKey]) return cache[cacheKey];
     try {
-      const raw = await window.cowork.callMcpTool("mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_read_user_profile", {
-        user_id: partner.slackUserId
+      const query = partner.email || partner.name;
+      if (!query) { _slackAvatarSet(cacheKey, "FAILED"); return null; }
+      const raw = await window.cowork.callMcpTool("mcp__41e23f2c-10b6-43fa-ae26-3ec63b9776d0__slack_search_users", {
+        query: query,
+        response_format: "detailed"
       });
-      // callMcpTool inside artifacts returns {content, structuredContent, isError}
-      let profile = null;
-      try {
-        profile = raw.structuredContent ?? JSON.parse(raw.content[0].text);
-      } catch (e) {
-        profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+      // callMcpTool inside artifacts returns {content, structuredContent, isError}.
+      // Pull out the search-results text whichever way it arrived, falling back
+      // to stringifying the whole payload.
+      let text = "";
+      if (raw && raw.structuredContent && typeof raw.structuredContent.results === "string") {
+        text = raw.structuredContent.results;
+      } else if (raw && raw.content && raw.content[0] && typeof raw.content[0].text === "string") {
+        text = raw.content[0].text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed.results === "string") text = parsed.results;
+        } catch (e) { /* content[0].text was already plain text */ }
+      } else {
+        text = typeof raw === "string" ? raw : JSON.stringify(raw || "");
       }
-      const url = (profile && profile.profile && (profile.profile.image_192 || profile.profile.image_72 || profile.profile.image_48)) || null;
+      // Extract the "Profile Pic: [Photo](URL)" markdown link.
+      // Mode A: anchor on the known Slack user ID's result block.
+      // Mode B: no ID to verify — take the first photo link in the results.
+      let url = null;
+      let seg = null;
+      if (partner.slackUserId) {
+        const idIdx = text.indexOf(partner.slackUserId);
+        if (idIdx !== -1) seg = text.slice(idIdx, idIdx + 1500);
+      } else {
+        seg = text;
+      }
+      if (seg) {
+        const m = seg.match(/\[Photo\]\((https?:[^)\s]+)\)/);
+        if (m) url = m[1].replace(/\\\//g, "/");
+      }
       if (url) {
-        _slackAvatarSet(partner.slackUserId, url);
+        _slackAvatarSet(cacheKey, url);
       } else {
         // Mark as failed so initials render red; don't endlessly retry
-        _slackAvatarSet(partner.slackUserId, "FAILED");
+        _slackAvatarSet(cacheKey, "FAILED");
       }
       return url;
     } catch (e) {
+      // Store FAILED so exceptions don't silently retry forever
+      _slackAvatarSet(cacheKey, "FAILED");
       return null;
     }
   }
@@ -2269,7 +2324,8 @@
   // Fires an async fetch to update the element if no cache entry yet.
   function makePartnerAvatar(partner, sizePx) {
     const cache = _slackAvatarCache();
-    const cachedUrl = partner.slackUserId ? cache[partner.slackUserId] : null;
+    const cacheKey = _avatarCacheKey(partner);
+    const cachedUrl = cacheKey ? cache[cacheKey] : null;
     // Cached photo URL — render image directly
     if (cachedUrl && cachedUrl !== "FAILED") {
       const img = document.createElement("img");
@@ -2291,7 +2347,7 @@
       return el;
     }
     // Fire async fetch — update element if we get a URL back
-    if (partner.slackUserId) {
+    if (cacheKey) {
       el.classList.add("partner-avatar-loading");
       fetchSlackAvatarIfNeeded(partner).then(function(url) {
         el.classList.remove("partner-avatar-loading");
